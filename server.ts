@@ -414,7 +414,15 @@ function verifySignedToken(rawToken?: string): ServerUserRecord | null {
     .digest('hex');
 
   if (providedSig !== expectedSig) return null;
-  const [tokenId, email, expiresStr] = decoded.split('.');
+  const identityEnd = decoded.lastIndexOf('.');
+  const identitySeparator = decoded.indexOf('.');
+  if (identitySeparator <= 0 || identityEnd <= identitySeparator) return null;
+
+  const tokenId = decoded.slice(0, identitySeparator);
+  const email = decoded.slice(identitySeparator + 1, identityEnd);
+  const expiresStr = decoded.slice(identityEnd + 1);
+  if (!email || !/^\d+$/.test(expiresStr)) return null;
+
   const session = activeSessions.get(tokenId);
   if (!session || session.email !== email) return null;
   if (Date.now() > Number(expiresStr)) {
