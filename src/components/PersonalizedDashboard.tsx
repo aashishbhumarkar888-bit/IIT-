@@ -273,6 +273,16 @@ export const FirstCropCard: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
           <button
             type="button"
+            onClick={() => navigate('/crop-to-cash')}
+            className="min-h-[48px] px-4 py-2.5 rounded-xl bg-white text-[#000080] border-2 border-[#9DF6B9] text-sm font-extrabold flex items-center gap-2 shadow-md anim-btn-press"
+          >
+            <span className="material-symbols-outlined text-[20px]">
+              account_tree
+            </span>
+            <span>Crop-to-Cash Ledger</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setAddCropModalOpen(true)}
             className="min-h-[48px] px-5 py-2.5 rounded-xl bg-[#138808] hover:bg-[#006B3C] text-white text-sm font-extrabold flex items-center gap-2 shadow-md anim-btn-press"
           >

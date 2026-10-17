@@ -30,6 +30,14 @@ const PRIMARY_NAV_ITEMS: NavItem[] = [
     icon: 'potted_plant',
   },
   {
+    route: '/crop-to-cash',
+    labelEn: 'Crop-to-Cash Ledger',
+    labelHi: 'फसल से भुगतान लेज़र',
+    mobileLabelEn: 'Ledger',
+    mobileLabelHi: 'लेज़र',
+    icon: 'account_tree',
+  },
+  {
     route: '/crop-passport',
     labelEn: 'Crop Passport',
     labelHi: 'फसल पासपोर्ट',
@@ -696,7 +704,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
           aria-label="Mobile Bottom Navigation"
           className="lg:hidden fixed bottom-0 inset-x-0 z-40 pb-safe bg-white border-t-2 border-[#000080]/20 shadow-lg"
         >
-          <div className="grid grid-cols-5 items-center h-16 px-1">
+          <div className="grid grid-cols-6 items-center h-16 px-1">
             {PRIMARY_NAV_ITEMS.map((item) => {
               const isActive = route === item.route;
               return (

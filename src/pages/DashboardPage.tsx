@@ -27,6 +27,16 @@ interface RoleModuleCard {
 const ROLE_MODULES: Record<UserRole, RoleModuleCard[]> = {
   farmer: [
     {
+      id: 'crop-to-cash',
+      titleEn: 'Crop-to-Cash Ledger',
+      titleHi: 'फसल से भुगतान लेज़र',
+      metric: 'One lot across the journey',
+      statusLabel: 'DEMO DATA',
+      description: 'Preview screening, net-return options, and sale tracking.',
+      icon: 'account_tree',
+      targetRoute: '/crop-to-cash',
+    },
+    {
       id: 'my-crops',
       titleEn: 'My Crops',
       titleHi: 'मेरी फसलें',

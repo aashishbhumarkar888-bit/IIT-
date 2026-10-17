@@ -6,6 +6,7 @@
 import React from 'react';
 import { AdminLoginDialog } from './components/AdminLoginDialog';
 import { AppShell } from './components/AppShell';
+import { OnboardingWizard } from './components/OnboardingWizard';
 import {
   KisanProvider,
   PUBLIC_ROUTES,
@@ -15,6 +16,7 @@ import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AdvisoryPage } from './pages/AdvisoryPage';
 import { AuthPage } from './pages/AuthPage';
 import { CropPassportPage } from './pages/CropPassportPage';
+import { CropToCashPage } from './pages/CropToCashPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { HarvestPaymentsPage } from './pages/HarvestPaymentsPage';
 import { MarketComparisonPage } from './pages/MarketComparisonPage';
@@ -50,10 +52,21 @@ const RouteViewport: React.FC = () => {
     );
   }
 
+  if (route === '/onboarding') {
+    return (
+      <>
+        <OnboardingWizard />
+        <AdminLoginDialog />
+      </>
+    );
+  }
+
   const renderPage = () => {
     switch (route) {
       case '/advisory':
         return <AdvisoryPage />;
+      case '/crop-to-cash':
+        return <CropToCashPage />;
       case '/crop-passport':
         return <CropPassportPage />;
       case '/market-comparison':

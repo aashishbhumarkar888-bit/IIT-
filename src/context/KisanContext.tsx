@@ -45,6 +45,7 @@ export type AppRoute =
   | '/onboarding'
   | '/dashboard'
   | '/advisory'
+  | '/crop-to-cash'
   | '/crop-passport'
   | '/market-comparison'
   | '/harvest-payments'
@@ -62,6 +63,7 @@ export const PROTECTED_ROUTES: AppRoute[] = [
   '/onboarding',
   '/dashboard',
   '/advisory',
+  '/crop-to-cash',
   '/crop-passport',
   '/market-comparison',
   '/harvest-payments',
