@@ -2404,147 +2404,141 @@ async function startServer() {
   });
 
   // 9. Admin: Change User Role
-  app.post(
-    '/api/admin/users/:userId/role',
-    requireAdmin,
-    (req: Request, res: Response) => {
-      const adminUser = (req as Request & { adminUser: ServerUserRecord })
-        .adminUser;
-      const { userId } = req.params;
-      const { role, reason } = req.body || {};
+  const handleAdminRoleChange = (req: Request, res: Response) => {
+    const adminUser = (req as Request & { adminUser: ServerUserRecord })
+      .adminUser;
+    const { userId } = req.params;
+    const { role, reason } = req.body || {};
 
-      if (!reason || String(reason).trim().length < 5) {
-        res.status(400).json({
-          error:
-            'A documented audit reason (min 5 characters) is required for role changes.',
-        });
-        return;
-      }
-
-      const validRoles: ServerUserRole[] = ['farmer', 'agent', 'buyer', 'admin'];
-      if (!validRoles.includes(role)) {
-        res.status(400).json({ error: 'Invalid role specified.' });
-        return;
-      }
-
-      const targetUser = Array.from(usersMap.values()).find(
-        (u) => u.id === userId
-      );
-      if (!targetUser) {
-        res.status(404).json({ error: 'User record not found.' });
-        return;
-      }
-
-      const prevRole = targetUser.role;
-      targetUser.role = role;
-
-      recordAudit(
-        adminUser.email,
-        adminUser.role,
-        'ROLE_CHANGE_APPROVED',
-        `${targetUser.email} (${prevRole} -> ${role})`,
-        String(reason).trim(),
-        'SUCCESS'
-      );
-
-      res.json({
-        user: sanitizeUser(targetUser),
-        auditLogs,
+    if (!reason || String(reason).trim().length < 5) {
+      res.status(400).json({
+        error:
+          'A documented audit reason (min 5 characters) is required for role changes.',
       });
+      return;
     }
-  );
+
+    const validRoles: ServerUserRole[] = ['farmer', 'agent', 'buyer', 'admin'];
+    if (!validRoles.includes(role)) {
+      res.status(400).json({ error: 'Invalid role specified.' });
+      return;
+    }
+
+    const targetUser = Array.from(usersMap.values()).find(
+      (u) => u.id === userId
+    );
+    if (!targetUser) {
+      res.status(404).json({ error: 'User record not found.' });
+      return;
+    }
+
+    const prevRole = targetUser.role;
+    targetUser.role = role;
+
+    recordAudit(
+      adminUser.email,
+      adminUser.role,
+      'ROLE_CHANGE_APPROVED',
+      `${targetUser.email} (${prevRole} -> ${role})`,
+      String(reason).trim(),
+      'SUCCESS'
+    );
+
+    res.json({
+      user: sanitizeUser(targetUser),
+      auditLogs,
+    });
+  };
+  app.post('/api/admin/users/:userId/role', requireAdmin, handleAdminRoleChange);
+  app.put('/api/admin/users/:userId/role', requireAdmin, handleAdminRoleChange);
 
   // 10. Admin: Activate / Deactivate User Account
-  app.post(
-    '/api/admin/users/:userId/status',
-    requireAdmin,
-    (req: Request, res: Response) => {
-      const adminUser = (req as Request & { adminUser: ServerUserRecord })
-        .adminUser;
-      const { userId } = req.params;
-      const { active, reason } = req.body || {};
+  const handleAdminUserStatus = (req: Request, res: Response) => {
+    const adminUser = (req as Request & { adminUser: ServerUserRecord })
+      .adminUser;
+    const { userId } = req.params;
+    const { active, reason } = req.body || {};
 
-      if (!reason || String(reason).trim().length < 5) {
-        res.status(400).json({
-          error:
-            'An audit reason is required to activate or deactivate an account.',
-        });
-        return;
-      }
-
-      const targetUser = Array.from(usersMap.values()).find(
-        (u) => u.id === userId
-      );
-      if (!targetUser) {
-        res.status(404).json({ error: 'User not found.' });
-        return;
-      }
-
-      if (targetUser.id === adminUser.id && !active) {
-        res.status(400).json({
-          error: 'You cannot deactivate your own active administrator account.',
-        });
-        return;
-      }
-
-      targetUser.active = Boolean(active);
-      recordAudit(
-        adminUser.email,
-        adminUser.role,
-        targetUser.active ? 'ACCOUNT_ACTIVATED' : 'ACCOUNT_DEACTIVATED',
-        targetUser.email,
-        String(reason).trim(),
-        targetUser.active ? 'SUCCESS' : 'WARNING'
-      );
-
-      res.json({
-        user: sanitizeUser(targetUser),
-        auditLogs,
+    if (!reason || String(reason).trim().length < 5) {
+      res.status(400).json({
+        error:
+          'An audit reason is required to activate or deactivate an account.',
       });
+      return;
     }
-  );
+
+    const targetUser = Array.from(usersMap.values()).find(
+      (u) => u.id === userId
+    );
+    if (!targetUser) {
+      res.status(404).json({ error: 'User not found.' });
+      return;
+    }
+
+    if (targetUser.id === adminUser.id && !active) {
+      res.status(400).json({
+        error: 'You cannot deactivate your own active administrator account.',
+      });
+      return;
+    }
+
+    targetUser.active = Boolean(active);
+    recordAudit(
+      adminUser.email,
+      adminUser.role,
+      targetUser.active ? 'ACCOUNT_ACTIVATED' : 'ACCOUNT_DEACTIVATED',
+      targetUser.email,
+      String(reason).trim(),
+      targetUser.active ? 'SUCCESS' : 'WARNING'
+    );
+
+    res.json({
+      user: sanitizeUser(targetUser),
+      auditLogs,
+    });
+  };
+  app.post('/api/admin/users/:userId/status', requireAdmin, handleAdminUserStatus);
+  app.put('/api/admin/users/:userId/status', requireAdmin, handleAdminUserStatus);
 
   // 11. Admin: Verification Review Approval / Rejection
-  app.post(
-    '/api/admin/lots/:lotId/verification',
-    requireAdmin,
-    (req: Request, res: Response) => {
-      const adminUser = (req as Request & { adminUser: ServerUserRecord })
-        .adminUser;
-      const { lotId } = req.params;
-      const { status, reason } = req.body || {};
+  const handleAdminLotVerification = (req: Request, res: Response) => {
+    const adminUser = (req as Request & { adminUser: ServerUserRecord })
+      .adminUser;
+    const { lotId } = req.params;
+    const { status, reason } = req.body || {};
 
-      if (!reason || String(reason).trim().length < 5) {
-        res.status(400).json({
-          error:
-            'A verifiable audit reason (minimum 5 characters) is mandatory before changing lot verification status.',
-        });
-        return;
-      }
-
-      serverLotStatusOverrides[lotId] = {
-        status: String(status),
-        updatedBy: adminUser.email,
-        reason: String(reason).trim(),
-        updatedAt: 'Just now',
-      };
-
-      recordAudit(
-        adminUser.email,
-        adminUser.role,
-        `LOT_VERIFICATION_${status}`,
-        `Lot ${lotId}`,
-        String(reason).trim(),
-        'SUCCESS'
-      );
-
-      res.json({
-        lotId,
-        override: serverLotStatusOverrides[lotId],
-        auditLogs,
+    if (!reason || String(reason).trim().length < 5) {
+      res.status(400).json({
+        error:
+          'A verifiable audit reason (minimum 5 characters) is mandatory before changing lot verification status.',
       });
+      return;
     }
-  );
+
+    serverLotStatusOverrides[lotId] = {
+      status: String(status),
+      updatedBy: adminUser.email,
+      reason: String(reason).trim(),
+      updatedAt: 'Just now',
+    };
+
+    recordAudit(
+      adminUser.email,
+      adminUser.role,
+      `LOT_VERIFICATION_${status}`,
+      `Lot ${lotId}`,
+      String(reason).trim(),
+      'SUCCESS'
+    );
+
+    res.json({
+      lotId,
+      override: serverLotStatusOverrides[lotId],
+      auditLogs,
+    });
+  };
+  app.post('/api/admin/lots/:lotId/verification', requireAdmin, handleAdminLotVerification);
+  app.put('/api/admin/lots/:lotId/verification', requireAdmin, handleAdminLotVerification);
 
   // Vite middleware in development, static dist in production
   if (process.env.NODE_ENV !== 'production') {
