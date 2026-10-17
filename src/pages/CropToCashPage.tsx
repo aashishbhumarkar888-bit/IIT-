@@ -44,7 +44,8 @@ const initialCosts = {
 };
 
 export const CropToCashPage: React.FC = () => {
-  const { currentLot, language, navigate, token, t } = useKisan();
+  const { currentLot, language, navigate, token, t, setSelectedLotId } =
+    useKisan();
   const [tab, setTab] = useState<WorkflowTab>('detect');
   const [snapshot, setSnapshot] = useState<CropToCashSnapshot | null>(null);
   const [quotes, setQuotes] = useState<SellingQuote[]>([]);
@@ -271,9 +272,10 @@ export const CropToCashPage: React.FC = () => {
         </div>
         <button
           type="button"
-          onClick={() =>
-            navigate(`/crop-passport?lot=${encodeURIComponent(currentLot.id)}`)
-          }
+          onClick={() => {
+            setSelectedLotId(currentLot.id);
+            navigate('/crop-passport');
+          }}
           className="min-h-11 rounded-lg border-2 border-[#000080]/30 px-4 py-2 text-sm font-bold text-[#000080] hover:bg-[#E8EAF6]"
         >
           {t('Open this lot’s Crop Passport', 'इस लॉट का फसल पासपोर्ट खोलें')}

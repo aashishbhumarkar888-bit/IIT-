@@ -1,8 +1,8 @@
 # KisanSetu AI / Kisan-SPO — Acceptance Checklist
 
-**Version:** 1.1.0-milestone-c2c
+**Version:** 1.2.0-milestone-stage3
 **Last Updated:** 2026-10-18
-**Owners:** Backend / AI / Integrations Engineer (Antigravity), Frontend Engineer (VS Code)
+**Owners:** Backend / AI / Integrations Engineer (Antigravity), Full-System QA / Security Auditor
 
 ---
 
@@ -80,4 +80,22 @@
 | Owner-Level Workspace Data Isolation | `VERIFIED` | `server.ts` enforces 403 Forbidden for non-owners (`tests/api-v1-integration.test.js`) |
 | Admin RBAC & Aggregated Pilot Analytics | `VERIFIED` | Server RBAC protects `/admin`; `GET /api/admin/pilot-analytics` aggregates privacy-safe metrics |
 | Credentials & Repository Security | `VERIFIED` | `firebase-applet-config.json` untracked and gitignored; safe example template committed |
+
+---
+
+## 5. Stage 3 Full-System QA & Security Audit Verification Summary
+
+| Stage 3 Journey / Test Category | Status | Evidence / Verification Output |
+|---|---|---|
+| **Journey A: Complete Farmer Workflow** | `VERIFIED` | Full lifecycle executed: isolated registration -> lot creation (`50 qtl`) -> leaf screening -> quote comparison (FCI/Mandi/Direct) -> independent financial return verification (FCI ₹1,26,750; Mandi ₹1,11,000; Direct ₹1,13,500; Downside ₹1,12,500) -> readiness -> visit outcome -> direct sale -> payment tracking -> persistent lot identity across snapshot (`tests/full-system-qa.test.js`) |
+| **Journey B: Validation & Recovery** | `VERIFIED` | Malformed lot creation rejected with HTTP 422; invalid data not persisted; corrected input succeeded; negative costs rejected with 422; oversized image (>10MB) safely rejected with `IMAGE_QUALITY_REJECTED` and explanatory diagnostic notes (`tests/full-system-qa.test.js`) |
+| **Journey C: Authorization & Privacy** | `VERIFIED` | Cross-user lot read rejected with 403; cross-user comparison modification rejected with 403; unauthenticated access rejected with 401; farmer accessing `/api/admin/pilot-analytics` rejected with 403; role forging (`role: 'admin'`) rejected with 403 `PRIVILEGE_ESCALATION_BLOCKED`; zero `passwordHash` or `passwordSalt` exposure; zero Aadhaar or bank scans collected (`tests/full-system-qa.test.js`) |
+| **Journey D: Bilingual Consistency** | `VERIFIED` | Full parity across English and Hindi for crop names, varieties, guidance notices, and readiness criteria (`labelEn` and `labelHi` present for 100% of readiness items in ledger snapshot) (`tests/full-system-qa.test.js`) |
+| **Journey E: Role Isolation** | `VERIFIED` | Farmer vs Buyer vs Admin isolation verified; admin pilot analytics endpoint (`/api/admin/pilot-analytics`) calculates aggregated sample metrics ($n$, outcome breakdown, gross/net turnover) with zero individual farmer PII (`tests/full-system-qa.test.js`) |
+| **Journey F: Direct Navigation & Operational Smoke** | `VERIFIED` | `GET /api/health` returns HTTP 200 with uptime, timestamp, service name, version; direct root `GET /` serves HTML application shell; `Cache-Control: private, no-store` enforced on all `/api` responses (`tests/full-system-qa.test.js`) |
+| **TypeScript Type Checking** | `VERIFIED` | `npx tsc --noEmit` exits with 0 errors across all source files, contexts, and pages |
+| **ESLint Static Analysis** | `VERIFIED` | `npx eslint .` exits with 0 warnings/errors |
+| **Production Build** | `VERIFIED` | `npm run build` succeeds in ~750ms with 0 errors and zero deprecation warnings |
+| **Interactive Browser Session** | `NOT TESTED` | Visual UI layout verified in headless tests; interactive browser Chromium runner recorded as NOT TESTED in this CI run due to headless execution environment |
+
 

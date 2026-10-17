@@ -484,6 +484,17 @@ async function startServer() {
     next();
   });
 
+  // 0. Smoke / Health Check
+  app.get('/api/health', (_req: Request, res: Response) => {
+    res.json({
+      status: 'OK',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      service: 'KisanSetu-AI-Backend',
+      version: '1.1.0',
+    });
+  });
+
   // 1. Check current session
   app.get('/api/auth/session', (req: Request, res: Response) => {
     const token = extractToken(req);
