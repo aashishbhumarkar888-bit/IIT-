@@ -88,7 +88,9 @@ interface ServerUserRecord {
   preferredLanguage: 'en' | 'hi';
   onboardingStatus: ServerOnboardingStatus;
   onboardingStep: number;
+  onboardingCompletedAt?: string;
   profileCompletion: number;
+  profileSchemaVersion?: number;
   isDemoAccount: boolean;
   demoDatasetVersion: string;
   uidLabel: string;
@@ -99,6 +101,43 @@ interface ServerUserRecord {
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string;
+}
+
+function computeServerProfileCompletion(params: {
+  name?: string;
+  role?: string;
+  preferredLanguage?: string;
+  village?: string;
+  district?: string;
+  state?: string;
+  onboardingStatus?: ServerOnboardingStatus;
+}): number {
+  let score = 0;
+  if (params.name && params.name.trim().length > 0) {
+    score += 25;
+  }
+  if (
+    (params.role === 'farmer' ||
+      params.role === 'agent' ||
+      params.role === 'buyer' ||
+      params.role === 'admin') &&
+    (params.preferredLanguage === 'en' || params.preferredLanguage === 'hi')
+  ) {
+    score += 25;
+  }
+  if (
+    Boolean(
+      (params.village && params.village.trim()) ||
+        (params.district && params.district.trim()) ||
+        (params.state && params.state.trim())
+    )
+  ) {
+    score += 25;
+  }
+  if (params.onboardingStatus === 'COMPLETED') {
+    score += 25;
+  }
+  return Math.max(25, Math.min(100, score));
 }
 
 interface AuditLogEntry {
@@ -176,7 +215,20 @@ function seedUser(params: {
     preferredLanguage: params.preferredLanguage || 'en',
     onboardingStatus: params.onboardingStatus,
     onboardingStep: params.onboardingStep,
-    profileCompletion: params.profileCompletion,
+    onboardingCompletedAt:
+      params.onboardingStatus === 'COMPLETED'
+        ? '2026-10-01 09:05 IST'
+        : undefined,
+    profileCompletion: computeServerProfileCompletion({
+      name: params.name,
+      role: params.role,
+      preferredLanguage: params.preferredLanguage || 'en',
+      village: params.village,
+      district: params.district,
+      state: params.state,
+      onboardingStatus: params.onboardingStatus,
+    }),
+    profileSchemaVersion: 1,
     isDemoAccount: params.isDemoAccount,
     demoDatasetVersion: params.demoDatasetVersion || '',
     uidLabel: params.uidLabel,
@@ -433,7 +485,9 @@ function sanitizeUser(u: ServerUserRecord) {
     preferredLanguage: u.preferredLanguage,
     onboardingStatus: u.onboardingStatus,
     onboardingStep: u.onboardingStep,
+    onboardingCompletedAt: u.onboardingCompletedAt,
     profileCompletion: u.profileCompletion,
+    profileSchemaVersion: u.profileSchemaVersion ?? 1,
     isDemoAccount: u.isDemoAccount,
     demoDatasetVersion: u.demoDatasetVersion,
     uidLabel: u.uidLabel,
@@ -538,36 +592,52 @@ async function startServer() {
       const { salt, hash } = hashPassword(
         crypto.randomBytes(24).toString('hex')
       );
+      const initialStatus: ServerOnboardingStatus =
+        onboardingStatus === 'COMPLETED' || onboardingStatus === 'SKIPPED'
+          ? onboardingStatus
+          : isBootstrappedAdmin
+          ? 'COMPLETED'
+          : 'INCOMPLETE';
+      const initialName = String(
+        displayName || normalizedEmail.split('@')[0]
+      ).trim();
+      const initialVillage = String(village || '').trim();
+      const initialDistrict = String(district || '').trim();
+      const initialState = String(state || '').trim();
+      const initialLang: 'en' | 'hi' =
+        preferredLanguage === 'hi' ? 'hi' : 'en';
+
       user = {
         id: String(uid).slice(0, 28),
         email: normalizedEmail,
-        name: String(displayName || normalizedEmail.split('@')[0]).trim(),
-        nameHi: String(displayName || normalizedEmail.split('@')[0]).trim(),
+        name: initialName,
+        nameHi: initialName,
         role: safeRole,
         villageOrOrg: String(villageOrOrg || 'Unassigned Workspace').trim(),
-        village: String(village || '').trim(),
-        district: String(district || '').trim(),
-        state: String(state || '').trim(),
+        village: initialVillage,
+        district: initialDistrict,
+        state: initialState,
         phoneNumber: String(phoneNumber || '').trim(),
-        preferredLanguage: preferredLanguage === 'hi' ? 'hi' : 'en',
-        onboardingStatus:
-          onboardingStatus === 'COMPLETED' || onboardingStatus === 'SKIPPED'
-            ? onboardingStatus
-            : isBootstrappedAdmin
-            ? 'COMPLETED'
-            : 'INCOMPLETE',
+        preferredLanguage: initialLang,
+        onboardingStatus: initialStatus,
         onboardingStep:
           typeof onboardingStep === 'number'
             ? Math.max(1, Math.min(4, onboardingStep))
             : isBootstrappedAdmin
             ? 4
             : 1,
-        profileCompletion:
-          typeof profileCompletion === 'number'
-            ? Math.max(0, Math.min(100, profileCompletion))
-            : isBootstrappedAdmin
-            ? 100
-            : 25,
+        onboardingCompletedAt:
+          initialStatus === 'COMPLETED' ? 'Just now' : undefined,
+        profileCompletion: computeServerProfileCompletion({
+          name: initialName,
+          role: safeRole,
+          preferredLanguage: initialLang,
+          village: initialVillage,
+          district: initialDistrict,
+          state: initialState,
+          onboardingStatus: initialStatus,
+        }),
+        profileSchemaVersion: 1,
         isDemoAccount: false,
         demoDatasetVersion: '',
         uidLabel: `FB-${String(uid).slice(0, 6).toUpperCase()}`,
@@ -589,19 +659,55 @@ async function startServer() {
       if (isBootstrappedAdmin) {
         user.role = 'admin';
       }
+      // Preserve non-empty user values and never downgrade completed onboarding
       if (
-        onboardingStatus === 'COMPLETED' ||
-        onboardingStatus === 'SKIPPED' ||
-        onboardingStatus === 'INCOMPLETE'
+        typeof displayName === 'string' &&
+        displayName.trim() &&
+        (!user.name || user.name === 'Kisan-SPO Member')
+      ) {
+        user.name = displayName.trim();
+        user.nameHi = displayName.trim();
+      }
+      if (typeof village === 'string' && village.trim() && !user.village) {
+        user.village = village.trim();
+      }
+      if (typeof district === 'string' && district.trim() && !user.district) {
+        user.district = district.trim();
+      }
+      if (typeof state === 'string' && state.trim() && !user.state) {
+        user.state = state.trim();
+      }
+      if (
+        typeof phoneNumber === 'string' &&
+        phoneNumber.trim() &&
+        !user.phoneNumber
+      ) {
+        user.phoneNumber = phoneNumber.trim();
+      }
+      if (
+        user.onboardingStatus !== 'COMPLETED' &&
+        (onboardingStatus === 'COMPLETED' || onboardingStatus === 'SKIPPED')
       ) {
         user.onboardingStatus = onboardingStatus;
+        if (onboardingStatus === 'COMPLETED') {
+          user.onboardingCompletedAt = 'Just now';
+        }
       }
       if (typeof onboardingStep === 'number') {
-        user.onboardingStep = Math.max(1, Math.min(4, onboardingStep));
+        user.onboardingStep = Math.max(
+          user.onboardingStep || 1,
+          Math.max(1, Math.min(4, onboardingStep))
+        );
       }
-      if (typeof profileCompletion === 'number') {
-        user.profileCompletion = Math.max(0, Math.min(100, profileCompletion));
-      }
+      user.profileCompletion = computeServerProfileCompletion({
+        name: user.name,
+        role: user.role,
+        preferredLanguage: user.preferredLanguage,
+        village: user.village,
+        district: user.district,
+        state: user.state,
+        onboardingStatus: user.onboardingStatus,
+      });
     }
 
     if (!user.active) {
@@ -753,7 +859,16 @@ async function startServer() {
       preferredLanguage: 'en',
       onboardingStatus: 'INCOMPLETE',
       onboardingStep: 1,
-      profileCompletion: 25,
+      profileCompletion: computeServerProfileCompletion({
+        name: String(name).trim(),
+        role: allowedRole,
+        preferredLanguage: 'en',
+        village: trimmedVillage,
+        district: '',
+        state: '',
+        onboardingStatus: 'INCOMPLETE',
+      }),
+      profileSchemaVersion: 1,
       isDemoAccount: false,
       demoDatasetVersion: '',
       uidLabel: `UID-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -853,16 +968,23 @@ async function startServer() {
       onboardingStatus === 'SKIPPED'
     ) {
       user.onboardingStatus = onboardingStatus;
+      if (onboardingStatus === 'COMPLETED' && !user.onboardingCompletedAt) {
+        user.onboardingCompletedAt = 'Just now';
+      }
     }
     if (typeof onboardingStep === 'number') {
       user.onboardingStep = Math.max(1, Math.min(4, Math.round(onboardingStep)));
     }
-    if (typeof profileCompletion === 'number') {
-      user.profileCompletion = Math.max(
-        0,
-        Math.min(100, Math.round(profileCompletion))
-      );
-    }
+    user.profileCompletion = computeServerProfileCompletion({
+      name: user.name,
+      role: user.role,
+      preferredLanguage: user.preferredLanguage,
+      village: user.village,
+      district: user.district,
+      state: user.state,
+      onboardingStatus: user.onboardingStatus,
+    });
+    user.profileSchemaVersion = 1;
 
     user.updatedAt = 'Just now';
 

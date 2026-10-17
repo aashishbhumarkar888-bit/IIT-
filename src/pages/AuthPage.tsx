@@ -1,21 +1,26 @@
 import React, { useState } from 'react';
 import { useKisan } from '../context/KisanContext';
 import { KISAN_LOGO_URL } from '../data/kisanData';
+import { useAuth } from '../hooks/useAuth';
 import { UserRole } from '../types/kisan';
 
 export const AuthPage: React.FC = () => {
   const {
     route,
     navigate,
-    loginWithGoogle,
-    loginWithServer,
-    registerWithServer,
-    devDemoMode,
     language,
     setLanguage,
     setAdminDialogOpen,
-    authSuccessTransition,
   } = useKisan();
+
+  const {
+    loginWithGoogle,
+    loginWithServer,
+    registerWithServer,
+    requestPasswordReset,
+    devDemoMode,
+    authSuccessTransition,
+  } = useAuth();
 
   const mode: 'login' | 'signup' | 'forgot' =
     route === '/signup'
@@ -56,25 +61,15 @@ export const AuthPage: React.FC = () => {
 
     if (mode === 'forgot') {
       setSubmitting(true);
-      try {
-        const res = await fetch('/api/auth/forgot-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: trimmedEmail }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setErrorMsg(data.error || 'Could not process recovery request.');
-        } else {
-          setResetConfirmation(
-            data.message ||
-              'Password recovery instructions have been sent to your email address.'
-          );
-        }
-      } catch {
-        setErrorMsg('Network error while requesting password reset.');
-      } finally {
-        setSubmitting(false);
+      const res = await requestPasswordReset(trimmedEmail);
+      setSubmitting(false);
+      if (!res.ok) {
+        setErrorMsg(res.error || 'Could not process recovery request.');
+      } else {
+        setResetConfirmation(
+          res.message ||
+            'Password recovery instructions have been sent to your email address.'
+        );
       }
       return;
     }
@@ -686,44 +681,73 @@ export const AuthPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Clearly Labeled Development Mode Demo Account Quick-Fill */}
+              {/* Clearly Labeled Development Mode Demo & Isolation Test Accounts */}
               {devDemoMode && (
-                <div className="mt-4 p-3 rounded-xl bg-[#E8EAF6] border border-[#000080]/30">
-                  <div className="flex items-center justify-between mb-1.5">
+                <div className="mt-4 p-3 rounded-xl bg-[#E8EAF6] border border-[#000080]/30 space-y-2">
+                  <div className="flex items-center justify-between">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#000080]">
-                      Dev Mode Demo Accounts (Server-Verified)
+                      Dev Mode Test Accounts (3 Experiences)
                     </span>
                     <span className="px-1.5 py-0.5 rounded bg-white text-[#000080] text-[9px] font-extrabold border border-[#000080]/20">
-                      LOCAL DEMO ONLY
+                      DEV / DEMO ONLY
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        fillDemoAccount('anita.verma@kisan-spo.in')
+                      }
+                      className="p-2 rounded bg-white hover:bg-[#138808] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-left transition-colors"
+                    >
+                      <span className="block text-[#138808] group-hover:text-white uppercase text-[9px]">
+                        Exp A • New User
+                      </span>
+                      <span>Anita Verma (Fresh)</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() =>
                         fillDemoAccount('ramesh.patel@kisan-spo.in')
                       }
-                      className="p-1.5 rounded bg-white hover:bg-[#138808] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-center transition-colors"
+                      className="p-2 rounded bg-[#FFDCC2]/70 hover:bg-[#138808] hover:text-white text-black border border-[#FF9933] text-[11px] font-extrabold text-left transition-colors"
                     >
-                      Farmer
+                      <span className="block text-[#371A00] uppercase text-[9px]">
+                        Exp B • Demo Farmer
+                      </span>
+                      <span>Ramesh Patel (Sample)</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        fillDemoAccount('suresh.kumar@kisan-spo.in')
+                      }
+                      className="p-2 rounded bg-white hover:bg-[#138808] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-left transition-colors"
+                    >
+                      <span className="block text-[#000080] uppercase text-[9px]">
+                        Exp C • Returning
+                      </span>
+                      <span>Suresh Kumar (1 Lot)</span>
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                     <button
                       type="button"
                       onClick={() =>
                         fillDemoAccount('agent.khandwa@kisan-spo.in')
                       }
-                      className="p-1.5 rounded bg-white hover:bg-[#138808] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-center transition-colors"
+                      className="p-1.5 rounded bg-white hover:bg-[#000080] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-center transition-colors"
                     >
-                      Village Agent
+                      Village Agent (Dr. Raman)
                     </button>
                     <button
                       type="button"
                       onClick={() =>
                         fillDemoAccount('procurement@itc-agri.in')
                       }
-                      className="p-1.5 rounded bg-white hover:bg-[#138808] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-center transition-colors"
+                      className="p-1.5 rounded bg-white hover:bg-[#000080] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-center transition-colors"
                     >
-                      Buyer (ITC)
+                      Institutional Buyer (ITC)
                     </button>
                   </div>
                 </div>

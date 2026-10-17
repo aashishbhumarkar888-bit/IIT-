@@ -166,6 +166,43 @@ export async function ensureFirestoreUserProfile(
   return promise;
 }
 
+export function computeProfileCompletionFromFields(params: {
+  displayName?: string;
+  role?: string;
+  preferredLanguage?: string;
+  village?: string;
+  district?: string;
+  state?: string;
+  onboardingStatus?: OnboardingStatus;
+}): number {
+  let score = 0;
+  if (params.displayName && params.displayName.trim().length > 0) {
+    score += 25;
+  }
+  if (
+    (params.role === 'farmer' ||
+      params.role === 'agent' ||
+      params.role === 'buyer' ||
+      params.role === 'admin') &&
+    (params.preferredLanguage === 'en' || params.preferredLanguage === 'hi')
+  ) {
+    score += 25;
+  }
+  if (
+    Boolean(
+      (params.village && params.village.trim()) ||
+        (params.district && params.district.trim()) ||
+        (params.state && params.state.trim())
+    )
+  ) {
+    score += 25;
+  }
+  if (params.onboardingStatus === 'COMPLETED') {
+    score += 25;
+  }
+  return Math.max(25, Math.min(100, score));
+}
+
 async function ensureFirestoreUserProfileInternal(
   fbUser: FirebaseUser,
   uid: string,
@@ -194,7 +231,7 @@ async function ensureFirestoreUserProfileInternal(
   let existingLang: Language = 'en';
   let existingOnboardingStatus: OnboardingStatus = 'INCOMPLETE';
   let existingOnboardingStep = 1;
-  let existingProfileCompletion = 25;
+  let existingProfileCompletion = 50;
   let existingIsDemoAccount = false;
   let existingDemoVersion = '';
   let existingPhoneNumber = '';
@@ -249,12 +286,15 @@ async function ensureFirestoreUserProfileInternal(
           Math.min(4, Math.round(data.onboardingStep))
         );
       }
-      if (typeof data.profileCompletion === 'number') {
-        existingProfileCompletion = Math.max(
-          0,
-          Math.min(100, Math.round(data.profileCompletion))
-        );
-      }
+      existingProfileCompletion = computeProfileCompletionFromFields({
+        displayName: existingDisplayName,
+        role: existingRole,
+        preferredLanguage: existingLang,
+        village: existingVillage,
+        district: existingDistrict,
+        state: existingState,
+        onboardingStatus: existingOnboardingStatus,
+      });
       existingIsDemoAccount = Boolean(data.isDemoAccount);
       existingDemoVersion = sanitizeOptionalText(data.demoDatasetVersion, 32);
 
@@ -284,6 +324,15 @@ async function ensureFirestoreUserProfileInternal(
         }
       }
     } else if (fbUser.emailVerified) {
+      existingProfileCompletion = computeProfileCompletionFromFields({
+        displayName: existingDisplayName,
+        role: existingRole,
+        preferredLanguage: existingLang,
+        village: existingVillage,
+        district: existingDistrict,
+        state: existingState,
+        onboardingStatus: existingOnboardingStatus,
+      });
       // Idempotent atomic batch creation for brand-new account
       const batch = writeBatch(db);
       batch.set(userRef, {
@@ -401,9 +450,45 @@ export async function updateFirestoreUserPreferences(
   const privateRef = doc(db, 'users', uid, 'private', 'info');
 
   try {
-    const snap = await getDoc(userRef);
-    if (!snap.exists()) return;
+    let snap = await getDoc(userRef);
+    if (!snap.exists()) {
+      await ensureFirestoreUserProfile(
+        currentUser,
+        updates.role || 'farmer',
+        updates.villageOrOrg || updates.village || ''
+      );
+      snap = await getDoc(userRef);
+      if (!snap.exists()) return;
+    }
     const current = snap.data();
+
+    const nextDisplayName = sanitizeText(
+      updates.displayName !== undefined && updates.displayName.trim()
+        ? updates.displayName
+        : current.displayName,
+      120,
+      'Kisan-SPO Member'
+    );
+    const nextRole: UserRole =
+      updates.role === 'farmer' ||
+      updates.role === 'agent' ||
+      updates.role === 'buyer'
+        ? updates.role
+        : current.role === 'agent' || current.role === 'buyer'
+        ? current.role
+        : 'farmer';
+    const nextLang: Language =
+      updates.preferredLanguage === 'en' || updates.preferredLanguage === 'hi'
+        ? updates.preferredLanguage
+        : current.preferredLanguage === 'hi'
+        ? 'hi'
+        : 'en';
+    const nextOnboardingStatus: OnboardingStatus =
+      updates.onboardingStatus === 'INCOMPLETE' ||
+      updates.onboardingStatus === 'COMPLETED' ||
+      updates.onboardingStatus === 'SKIPPED'
+        ? updates.onboardingStatus
+        : current.onboardingStatus || 'INCOMPLETE';
 
     const nextVillage =
       updates.village !== undefined
@@ -431,21 +516,25 @@ export async function updateFirestoreUserPreferences(
       'Unassigned Workspace'
     );
 
+    const computedCompletion = computeProfileCompletionFromFields({
+      displayName: nextDisplayName,
+      role: nextRole,
+      preferredLanguage: nextLang,
+      village: nextVillage,
+      district: nextDistrict,
+      state: nextState,
+      onboardingStatus: nextOnboardingStatus,
+    });
+
     await updateDoc(userRef, {
-      displayName: sanitizeText(
-        updates.displayName ?? current.displayName,
-        120,
-        'Kisan-SPO Member'
-      ),
-      role: updates.role ?? current.role ?? 'farmer',
+      displayName: nextDisplayName,
+      role: nextRole,
       villageOrOrg: nextVillageOrOrg,
       village: nextVillage,
       district: nextDistrict,
       state: nextState,
-      preferredLanguage:
-        updates.preferredLanguage ?? current.preferredLanguage ?? 'en',
-      onboardingStatus:
-        updates.onboardingStatus ?? current.onboardingStatus ?? 'INCOMPLETE',
+      preferredLanguage: nextLang,
+      onboardingStatus: nextOnboardingStatus,
       onboardingStep: Math.max(
         1,
         Math.min(
@@ -453,15 +542,7 @@ export async function updateFirestoreUserPreferences(
           Math.round(updates.onboardingStep ?? current.onboardingStep ?? 1)
         )
       ),
-      profileCompletion: Math.max(
-        0,
-        Math.min(
-          100,
-          Math.round(
-            updates.profileCompletion ?? current.profileCompletion ?? 25
-          )
-        )
-      ),
+      profileCompletion: computedCompletion,
       demoDatasetVersion: sanitizeOptionalText(current.demoDatasetVersion, 32),
       updatedAt: serverTimestamp(),
     });

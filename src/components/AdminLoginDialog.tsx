@@ -1,16 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useKisan } from '../context/KisanContext';
+import { useAuth } from '../hooks/useAuth';
 
 export const AdminLoginDialog: React.FC = () => {
-  const {
-    adminDialogOpen,
-    setAdminDialogOpen,
-    user,
-    loginWithGoogle,
-    adminLoginWithServer,
-    navigate,
-    devDemoMode,
-  } = useKisan();
+  const { adminDialogOpen, setAdminDialogOpen, navigate } = useKisan();
+  const { user, loginWithGoogle, adminLoginWithServer, devDemoMode } =
+    useAuth();
 
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
