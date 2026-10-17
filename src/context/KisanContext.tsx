@@ -11,6 +11,16 @@ import {
   FARM_PLOTS,
   INITIAL_PAYMENT,
 } from '../data/kisanData';
+import {
+  auth,
+  ensureFirestoreUserProfile,
+  onAuthStateChanged,
+  saveCropLotToFirestore,
+  signInWithGoogle,
+  signOutFromFirebase,
+  subscribeToUserCropLots,
+  updateFirestoreUserPreferences,
+} from '../firebase';
 import { calculateArbitrage } from '../services/kisanService';
 import {
   ArbitrageCalculationInput,
@@ -85,6 +95,11 @@ interface KisanContextValue {
   user: AuthenticatedUser | null;
   token: string | null;
   devDemoMode: boolean;
+  loginWithGoogle: (
+    preferredRole?: UserRole,
+    preferredVillageOrOrg?: string,
+    openAdminAfter?: boolean
+  ) => Promise<{ ok: boolean; error?: string }>;
   loginWithServer: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   registerWithServer: (params: {
     name: string;
@@ -242,10 +257,65 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  // Verify existing session token on initial load
+  // Verify existing Firebase Auth or Server session on initial load
   useEffect(() => {
     let cancelled = false;
-    async function checkSession() {
+    let unsubscribeLots: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
+      if (cancelled) return;
+
+      if (fbUser) {
+        try {
+          const profile = await ensureFirestoreUserProfile(fbUser);
+          const syncRes = await fetch('/api/auth/firebase-sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: profile.uid,
+              email: profile.email,
+              displayName: profile.displayName,
+              role: profile.role,
+              villageOrOrg: profile.villageOrOrg,
+              emailVerified: profile.emailVerified,
+            }),
+          });
+          const syncData = await syncRes.json();
+
+          if (!cancelled && syncRes.ok && syncData.token && syncData.user) {
+            try {
+              sessionStorage.setItem(SESSION_TOKEN_STORAGE_KEY, syncData.token);
+            } catch {
+              // Ignore
+            }
+            setToken(syncData.token);
+            setUser(syncData.user);
+            setDevDemoMode(Boolean(syncData.devDemoMode));
+            setRoleState(profile.role);
+            setLanguageState(profile.preferredLanguage);
+            setAuthStatus('AUTHENTICATED');
+
+            if (unsubscribeLots) unsubscribeLots();
+            unsubscribeLots = subscribeToUserCropLots(profile.uid, (lotMap) => {
+              setStatusOverrides((prev) => ({ ...prev, ...lotMap }));
+            });
+
+            const target: AppRoute =
+              initialPath === '/admin' && syncData.user.role === 'admin'
+                ? '/admin'
+                : PROTECTED_ROUTES.includes(initialPath) &&
+                  initialPath !== '/admin'
+                ? initialPath
+                : '/dashboard';
+            syncHistory(target);
+            return;
+          }
+        } catch {
+          // Fall back to server session check
+        }
+      }
+
+      // Check existing server session token if not signed in via Firebase
       let savedToken: string | null = null;
       try {
         savedToken = sessionStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
@@ -298,11 +368,12 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
           syncHistory('/login');
         }
       }
-    }
+    });
 
-    checkSession();
     return () => {
       cancelled = true;
+      unsubscribeAuth();
+      if (unsubscribeLots) unsubscribeLots();
     };
   }, [initialPath, syncHistory]);
 
@@ -410,6 +481,75 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
       }, 280);
     },
     [syncHistory]
+  );
+
+  const loginWithGoogle = useCallback(
+    async (
+      preferredRole: UserRole = 'farmer',
+      preferredVillageOrOrg: string = 'Khandwa Cluster',
+      openAdminAfter: boolean = false
+    ): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const profile = await signInWithGoogle(
+          preferredRole,
+          preferredVillageOrOrg
+        );
+        const syncRes = await fetch('/api/auth/firebase-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: profile.uid,
+            email: profile.email,
+            displayName: profile.displayName,
+            role: profile.role,
+            villageOrOrg: profile.villageOrOrg,
+            emailVerified: profile.emailVerified,
+          }),
+        });
+        const syncData = await syncRes.json();
+        if (!syncRes.ok || !syncData.token) {
+          return {
+            ok: false,
+            error:
+              syncData.error ||
+              'Failed to synchronize Firebase session with Kisan-SPO server.',
+          };
+        }
+
+        if (openAdminAfter && syncData.user.role !== 'admin') {
+          return {
+            ok: false,
+            error: `Signed in as ${syncData.user.email} (${syncData.user.role}), which is not an authorized Administrator account.`,
+          };
+        }
+
+        setAdminDialogOpen(false);
+        const destination: AppRoute =
+          openAdminAfter && syncData.user.role === 'admin'
+            ? '/admin'
+            : syncData.user.role === 'admin'
+            ? '/admin'
+            : intendedRoute || '/dashboard';
+        completeAuthTransition(syncData.token, syncData.user, destination);
+        showToast(
+          `Signed in with Google (${profile.email}) • Synced with Cloud Firestore`,
+          'green'
+        );
+        return { ok: true };
+      } catch (err) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : 'Google Sign-In popup was closed or blocked.';
+        return {
+          ok: false,
+          error: msg.includes('auth/popup-closed-by-user')
+            ? 'Google Sign-In popup was closed before completing authentication.'
+            : msg,
+        };
+      }
+    },
+    [intendedRoute, completeAuthTransition, showToast]
   );
 
   const loginWithServer = useCallback(
@@ -536,6 +676,11 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [token, showToast]);
 
   const logout = useCallback(async () => {
+    try {
+      await signOutFromFirebase();
+    } catch {
+      // Ignore
+    }
     if (token) {
       try {
         await fetch('/api/auth/logout', {
@@ -557,12 +702,15 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     setProcessorPivotApproved(false);
     setAuthStatus('UNAUTHENTICATED');
     syncHistory('/login');
-    showToast('Signed out securely. Protected session cleared.', 'blue');
+    showToast('Signed out securely from Firebase & Kisan-SPO.', 'blue');
   }, [token, syncHistory, showToast]);
 
   const setRole = useCallback(
     (nextRole: UserRole) => {
       setRoleState(nextRole);
+      updateFirestoreUserPreferences({ role: nextRole }).catch(() => {
+        // Ignore if not using Firebase auth
+      });
       const roleLabels: Record<UserRole, string> = {
         farmer: 'Farmer / Family Proxy (किसान / पारिवारिक प्रतिनिधि)',
         agent: 'Village Agent / Arhtiya Partner (ग्रामीण एजेंट / आढ़तिया साथी)',
@@ -581,6 +729,11 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
       } catch {
         // Ignore
       }
+      updateFirestoreUserPreferences({ preferredLanguage: nextLang }).catch(
+        () => {
+          // Ignore
+        }
+      );
       showToast(
         nextLang === 'hi'
           ? 'भाषा बदली गई: हिंदी (Hindi Active)'
@@ -614,8 +767,14 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
   const updateLotVerificationStatus = useCallback(
     (lotId: string, status: VerificationStatus) => {
       setStatusOverrides((prev) => ({ ...prev, [lotId]: status }));
+      const targetLot = CROP_LOTS.find((l) => l.id === lotId);
+      if (targetLot) {
+        saveCropLotToFirestore(targetLot, status).catch(() => {
+          // Ignore if demo mode without Firebase user
+        });
+      }
       showToast(
-        `Lot ${lotId} credential state updated to ${status.replace(/_/g, ' ')}`,
+        `Lot ${lotId} credential state updated to ${status.replace(/_/g, ' ')} (Synced to Firestore)`,
         status === 'INDEPENDENTLY_VERIFIED' || status === 'LABORATORY_TESTED'
           ? 'green'
           : 'saffron'
@@ -698,6 +857,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
         user,
         token,
         devDemoMode,
+        loginWithGoogle,
         loginWithServer,
         registerWithServer,
         adminLoginWithServer,

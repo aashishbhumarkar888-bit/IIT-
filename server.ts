@@ -301,6 +301,80 @@ async function startServer() {
     });
   });
 
+  // 1b. Synchronize Firebase Google Sign-In session with Server RBAC
+  app.post('/api/auth/firebase-sync', (req: Request, res: Response) => {
+    const { uid, email, displayName, role, villageOrOrg, emailVerified } =
+      req.body || {};
+    if (!uid || !email || typeof email !== 'string') {
+      res.status(400).json({
+        error: 'Valid Firebase UID and email are required for session sync.',
+      });
+      return;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const isBootstrappedAdmin =
+      Boolean(emailVerified) &&
+      normalizedEmail === 'aashishbhumarkar888@gmail.com';
+
+    let user = usersMap.get(normalizedEmail);
+    const safeRole: ServerUserRole = isBootstrappedAdmin
+      ? 'admin'
+      : role === 'agent' || role === 'buyer'
+      ? role
+      : 'farmer';
+
+    if (!user) {
+      const { salt, hash } = hashPassword(crypto.randomBytes(24).toString('hex'));
+      user = {
+        id: String(uid).slice(0, 28),
+        email: normalizedEmail,
+        name: String(displayName || normalizedEmail.split('@')[0]).trim(),
+        nameHi: String(displayName || normalizedEmail.split('@')[0]).trim(),
+        role: safeRole,
+        villageOrOrg: String(villageOrOrg || 'Khandwa Cluster').trim(),
+        uidLabel: `FB-${String(uid).slice(0, 6).toUpperCase()}`,
+        passwordSalt: salt,
+        passwordHash: hash,
+        emailVerified: Boolean(emailVerified),
+        active: true,
+        createdAt: 'Just now (Firebase Auth)',
+        lastLoginAt: 'Just now',
+      };
+      usersMap.set(normalizedEmail, user);
+    } else {
+      user.lastLoginAt = 'Just now';
+      user.emailVerified = Boolean(emailVerified) || user.emailVerified;
+      if (isBootstrappedAdmin) {
+        user.role = 'admin';
+      }
+    }
+
+    if (!user.active) {
+      res.status(403).json({
+        error:
+          'This account has been deactivated by the Mandi Administrator.',
+      });
+      return;
+    }
+
+    const token = createSignedToken(user.email);
+    recordAudit(
+      user.email,
+      user.role,
+      'FIREBASE_GOOGLE_LOGIN',
+      `UID: ${String(uid).slice(0, 12)}`,
+      'Authenticated via Google Sign-In with Firebase Auth & Firestore.',
+      'SUCCESS'
+    );
+
+    res.json({
+      token,
+      user: sanitizeUser(user),
+      devDemoMode: isDevDemoMode,
+    });
+  });
+
   // 2. Standard Login
   app.post('/api/auth/login', (req: Request, res: Response) => {
     const { email, password } = req.body || {};

@@ -6,6 +6,7 @@ export const AdminLoginDialog: React.FC = () => {
     adminDialogOpen,
     setAdminDialogOpen,
     user,
+    loginWithGoogle,
     adminLoginWithServer,
     navigate,
     devDemoMode,
@@ -55,6 +56,16 @@ export const AdminLoginDialog: React.FC = () => {
     setErrorMsg('');
     setEmail('registrar.admin@kisan-spo.org.in');
     setPassword('Kisan@Admin#2026');
+  };
+
+  const handleGoogleAdminSignIn = async () => {
+    setErrorMsg('');
+    setSubmitting(true);
+    const res = await loginWithGoogle('agent', 'APMC Khandwa Central Hub', true);
+    setSubmitting(false);
+    if (!res.ok && res.error) {
+      setErrorMsg(res.error);
+    }
   };
 
   return (
@@ -148,6 +159,18 @@ export const AdminLoginDialog: React.FC = () => {
                 {errorMsg}
               </div>
             )}
+
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={handleGoogleAdminSignIn}
+              className="w-full min-h-[44px] px-4 py-2 rounded-lg bg-[#000080] hover:bg-[#00003C] disabled:opacity-60 text-white font-extrabold text-xs flex items-center justify-center gap-2 anim-btn-press"
+            >
+              <span className="w-5 h-5 rounded-full bg-white text-[#000080] flex items-center justify-center font-black text-[11px] shrink-0">
+                G
+              </span>
+              <span>Verify Admin via Google Sign-In (Firebase Auth)</span>
+            </button>
 
             <form onSubmit={handleSubmit} className="space-y-3" noValidate>
               <div>

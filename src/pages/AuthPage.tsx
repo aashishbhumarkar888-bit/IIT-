@@ -7,6 +7,7 @@ export const AuthPage: React.FC = () => {
   const {
     route,
     navigate,
+    loginWithGoogle,
     loginWithServer,
     registerWithServer,
     devDemoMode,
@@ -122,6 +123,21 @@ export const AuthPage: React.FC = () => {
     if (mode !== 'login') navigate('/login');
     setEmail(demoEmail);
     setPassword('Kisan@2026');
+  };
+
+  const handleGoogleSignIn = async () => {
+    setErrorMsg('');
+    setResetConfirmation('');
+    setSubmitting(true);
+    const res = await loginWithGoogle(
+      signupRole,
+      villageOrOrg.trim() || 'Khandwa Cluster',
+      false
+    );
+    setSubmitting(false);
+    if (!res.ok && res.error) {
+      setErrorMsg(res.error);
+    }
   };
 
   return (
@@ -440,6 +456,32 @@ export const AuthPage: React.FC = () => {
                     check_circle
                   </span>
                   <span>{resetConfirmation}</span>
+                </div>
+              )}
+
+              {/* Google Sign-In with Firebase Auth & Cloud Firestore Persistence */}
+              {mode !== 'forgot' && (
+                <div className="mb-4">
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    onClick={handleGoogleSignIn}
+                    className="w-full min-h-[48px] px-4 py-2.5 rounded-lg bg-[#000080] hover:bg-[#00003C] disabled:opacity-60 text-white font-extrabold text-sm shadow-md flex items-center justify-center gap-2.5 anim-btn-press"
+                  >
+                    <span className="w-6 h-6 rounded-full bg-white text-[#000080] flex items-center justify-center font-black text-xs shrink-0">
+                      G
+                    </span>
+                    <span>
+                      Continue with Google (Firebase Auth &amp; Firestore)
+                    </span>
+                  </button>
+                  <div className="my-3 flex items-center gap-2">
+                    <div className="h-px bg-[#000080]/20 flex-1" />
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#000080]">
+                      or sign in with Kisan-SPO credentials
+                    </span>
+                    <div className="h-px bg-[#000080]/20 flex-1" />
+                  </div>
                 </div>
               )}
 

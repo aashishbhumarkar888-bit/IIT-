@@ -1,0 +1,421 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 4.1: Global Safety Net (Default-Deny Catch-All)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // Phase 3: Hardened Global Primitives
+    // =========================================================================
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'aashishbhumarkar888@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function userParentExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)) ||
+        existsAfter(/databases/$(database)/documents/users/$(userId));
+    }
+
+    // =========================================================================
+    // Pillar 2: Validation Blueprints (Anti-Update-Gap)
+    // =========================================================================
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+          'uid',
+          'displayName',
+          'role',
+          'villageOrOrg',
+          'preferredLanguage',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid',
+          'displayName',
+          'role',
+          'villageOrOrg',
+          'preferredLanguage',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.uid is string &&
+        data.uid.size() >= 1 &&
+        data.uid.size() <= 128 &&
+        data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.displayName is string &&
+        data.displayName.size() >= 1 &&
+        data.displayName.size() <= 120 &&
+        data.role is string &&
+        data.role.size() <= 16 &&
+        data.role in ['farmer', 'agent', 'buyer'] &&
+        data.villageOrOrg is string &&
+        data.villageOrOrg.size() >= 1 &&
+        data.villageOrOrg.size() <= 120 &&
+        data.preferredLanguage is string &&
+        data.preferredLanguage.size() == 2 &&
+        data.preferredLanguage in ['en', 'hi'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data) {
+      return data.keys().hasAll([
+          'uid',
+          'email',
+          'emailVerified',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid',
+          'email',
+          'emailVerified',
+          'updatedAt'
+        ]) &&
+        data.uid is string &&
+        data.uid.size() >= 1 &&
+        data.uid.size() <= 128 &&
+        data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.email is string &&
+        data.email.size() >= 3 &&
+        data.email.size() <= 254 &&
+        data.emailVerified is bool &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCropLotRecord(data) {
+      return data.keys().hasAll([
+          'lotId',
+          'ownerId',
+          'shortCode',
+          'farmerName',
+          'cropName',
+          'quantityQuintals',
+          'verificationStatus',
+          'sha256Hash',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'lotId',
+          'ownerId',
+          'shortCode',
+          'farmerName',
+          'cropName',
+          'quantityQuintals',
+          'verificationStatus',
+          'sha256Hash',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.lotId is string &&
+        data.lotId.size() >= 1 &&
+        data.lotId.size() <= 128 &&
+        data.lotId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.ownerId is string &&
+        data.ownerId.size() >= 1 &&
+        data.ownerId.size() <= 128 &&
+        data.ownerId.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.shortCode is string &&
+        data.shortCode.size() >= 1 &&
+        data.shortCode.size() <= 32 &&
+        data.farmerName is string &&
+        data.farmerName.size() >= 1 &&
+        data.farmerName.size() <= 120 &&
+        data.cropName is string &&
+        data.cropName.size() >= 1 &&
+        data.cropName.size() <= 120 &&
+        data.quantityQuintals is number &&
+        data.quantityQuintals > 0 &&
+        data.quantityQuintals <= 100000 &&
+        data.verificationStatus is string &&
+        data.verificationStatus.size() <= 32 &&
+        data.verificationStatus in [
+          'INDEPENDENTLY_VERIFIED',
+          'LABORATORY_TESTED',
+          'DOCUMENT_VERIFIED',
+          'FARMER_DECLARED',
+          'VERIFICATION_PENDING'
+        ] &&
+        data.sha256Hash is string &&
+        data.sha256Hash.size() >= 16 &&
+        data.sha256Hash.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAuditEvent(data) {
+      return data.keys().hasAll([
+          'actorUid',
+          'actorRole',
+          'action',
+          'target',
+          'reason',
+          'status',
+          'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'actorUid',
+          'actorRole',
+          'action',
+          'target',
+          'reason',
+          'status',
+          'createdAt'
+        ]) &&
+        data.actorUid is string &&
+        data.actorUid.size() >= 1 &&
+        data.actorUid.size() <= 128 &&
+        data.actorUid.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.actorUid == request.auth.uid &&
+        data.actorRole is string &&
+        data.actorRole.size() <= 16 &&
+        data.actorRole in ['farmer', 'agent', 'buyer', 'admin'] &&
+        data.action is string &&
+        data.action.size() >= 1 &&
+        data.action.size() <= 80 &&
+        data.target is string &&
+        data.target.size() >= 1 &&
+        data.target.size() <= 128 &&
+        data.reason is string &&
+        data.reason.size() >= 1 &&
+        data.reason.size() <= 500 &&
+        data.status is string &&
+        data.status.size() <= 16 &&
+        data.status in ['SUCCESS', 'DENIED', 'WARNING'] &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['uid', 'grantedAt']) &&
+        data.keys().hasOnly(['uid', 'grantedAt']) &&
+        data.uid is string &&
+        data.uid.size() >= 1 &&
+        data.uid.size() <= 128 &&
+        data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+        data.grantedAt is timestamp;
+    }
+
+    // =========================================================================
+    // Collection 1: /users/{userId} (Operational User Profile — No PII)
+    // =========================================================================
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      // Pillar 8 Cost-Optimization: No get()/exists() inside allow list
+      allow list: if isSignedIn() && (existing().uid == request.auth.uid || isBootstrappedAdmin());
+
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isValidUserProfile(incoming()) &&
+        isVerifiedUser() &&
+        isValidId(userId) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          // Action 1: Owner updates operational profile preferences
+          (
+            isOwner(userId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'displayName',
+              'role',
+              'villageOrOrg',
+              'preferredLanguage',
+              'updatedAt'
+            ])
+          ) ||
+          // Action 2: Administrator updates user role or organization
+          (
+            isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'displayName',
+              'role',
+              'villageOrOrg',
+              'preferredLanguage',
+              'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if false;
+
+      // =======================================================================
+      // Subcollection: /users/{userId}/private/{docId} (Isolated PII Vault)
+      // Enforces Pillar 1 Master Gate, Pillar 6 PII Isolation & Pillar 7 Atomicity
+      // =======================================================================
+      match /private/{docId} {
+        allow get: if isSignedIn() &&
+          isValidId(userId) &&
+          isValidId(docId) &&
+          (isOwner(userId) || isAdmin()) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+
+        allow list: if false;
+
+        allow create: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(docId) &&
+          isOwner(userId) &&
+          isValidUserPrivateInfo(incoming()) &&
+          incoming().uid == request.auth.uid &&
+          incoming().updatedAt == request.time &&
+          userParentExists(userId);
+
+        allow update: if isValidUserPrivateInfo(incoming()) &&
+          isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(docId) &&
+          incoming().uid == existing().uid &&
+          incoming().updatedAt == request.time && (
+            (
+              isOwner(userId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'email',
+                'emailVerified',
+                'updatedAt'
+              ])
+            ) ||
+            isAdmin()
+          ) &&
+          userParentExists(userId);
+
+        allow delete: if false;
+      }
+    }
+
+    // =========================================================================
+    // Collection 2: /cropLots/{lotId} (Persisted Digital Crop Passports)
+    // =========================================================================
+    match /cropLots/{lotId} {
+      allow get: if isSignedIn() &&
+        isValidId(lotId) &&
+        (existing().ownerId == request.auth.uid || isAdmin());
+
+      // Pillar 8 Cost-Optimization: No get()/exists() inside allow list
+      allow list: if isSignedIn() &&
+        (existing().ownerId == request.auth.uid || isBootstrappedAdmin());
+
+      allow create: if isVerifiedUser() &&
+        isValidId(lotId) &&
+        isValidCropLotRecord(incoming()) &&
+        incoming().lotId == lotId &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        userParentExists(request.auth.uid);
+
+      allow update: if isValidCropLotRecord(incoming()) &&
+        isVerifiedUser() &&
+        isValidId(lotId) &&
+        incoming().lotId == existing().lotId &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          // Action 1: Owner updates verification status or quantity
+          (
+            existing().ownerId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'verificationStatus',
+              'quantityQuintals',
+              'sha256Hash',
+              'updatedAt'
+            ])
+          ) ||
+          // Action 2: Administrator verification audit override
+          (
+            isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'verificationStatus',
+              'sha256Hash',
+              'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // =========================================================================
+    // Collection 3: /auditLogs/{logId} (Immutable Audit Trail)
+    // =========================================================================
+    match /auditLogs/{logId} {
+      allow get: if isSignedIn() &&
+        isValidId(logId) &&
+        (existing().actorUid == request.auth.uid || isAdmin());
+
+      // Pillar 8 Cost-Optimization: No get()/exists() inside allow list
+      allow list: if isSignedIn() &&
+        (existing().actorUid == request.auth.uid || isBootstrappedAdmin());
+
+      allow create: if isVerifiedUser() &&
+        isValidId(logId) &&
+        isValidAuditEvent(incoming()) &&
+        incoming().createdAt == request.time &&
+        userParentExists(request.auth.uid);
+
+      allow update, delete: if false;
+    }
+
+    // =========================================================================
+    // Collection 4: /admins/{adminUid} (Trusted Administrator Registry)
+    // =========================================================================
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && (isOwner(adminUid) || isAdmin());
+      allow list: if false;
+
+      allow create: if isVerifiedUser() &&
+        isValidId(adminUid) &&
+        isValidAdminRecord(incoming()) &&
+        incoming().uid == adminUid &&
+        incoming().grantedAt == request.time &&
+        isAdmin();
+
+      allow update: if isValidAdminRecord(incoming()) &&
+        isVerifiedUser() &&
+        isValidId(adminUid) &&
+        incoming().uid == existing().uid &&
+        incoming().grantedAt == existing().grantedAt &&
+        isAdmin();
+
+      allow delete: if false;
+    }
+  }
+}

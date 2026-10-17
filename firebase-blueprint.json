@@ -1,0 +1,270 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Operational Kisan-SPO profile for an authenticated farmer, village agent, or institutional buyer (PII isolated in private subcollection).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Full name or FPO representative name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "description": "Operational role in Kisan-SPO",
+          "enum": ["farmer", "agent", "buyer"]
+        },
+        "villageOrOrg": {
+          "type": "string",
+          "description": "Village hub or organization name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "preferredLanguage": {
+          "type": "string",
+          "description": "Bilingual UI preference",
+          "enum": ["en", "hi"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was last updated"
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "role",
+        "villageOrOrg",
+        "preferredLanguage",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII record containing user email and login audit metadata.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Authenticated user email address",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "emailVerified": {
+          "type": "boolean",
+          "description": "Whether the Google/Firebase email is verified"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest sign-in sync"
+        }
+      },
+      "required": ["uid", "email", "emailVerified", "updatedAt"]
+    },
+    "CropLotRecord": {
+      "title": "CropLotRecord",
+      "description": "Persistent Digital Crop Passport and verification state for an agricultural lot.",
+      "type": "object",
+      "properties": {
+        "lotId": {
+          "type": "string",
+          "description": "Unique crop lot identifier",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the creator/owner",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "shortCode": {
+          "type": "string",
+          "description": "Short display code for the lot",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "farmerName": {
+          "type": "string",
+          "description": "Farmer display name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "cropName": {
+          "type": "string",
+          "description": "Commodity name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "quantityQuintals": {
+          "type": "number",
+          "description": "Declared lot weight in quintals"
+        },
+        "verificationStatus": {
+          "type": "string",
+          "description": "Current verification tier",
+          "enum": [
+            "INDEPENDENTLY_VERIFIED",
+            "LABORATORY_TESTED",
+            "DOCUMENT_VERIFIED",
+            "FARMER_DECLARED",
+            "VERIFICATION_PENDING"
+          ]
+        },
+        "sha256Hash": {
+          "type": "string",
+          "description": "Cryptographic SHA-256 evidence digest",
+          "minLength": 16,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation server timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update server timestamp"
+        }
+      },
+      "required": [
+        "lotId",
+        "ownerId",
+        "shortCode",
+        "farmerName",
+        "cropName",
+        "quantityQuintals",
+        "verificationStatus",
+        "sha256Hash",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AuditEvent": {
+      "title": "AuditEvent",
+      "description": "Immutable administrative or operational audit log entry.",
+      "type": "object",
+      "properties": {
+        "actorUid": {
+          "type": "string",
+          "description": "UID of the user performing the action",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "actorRole": {
+          "type": "string",
+          "description": "Role at time of action",
+          "enum": ["farmer", "agent", "buyer", "admin"]
+        },
+        "action": {
+          "type": "string",
+          "description": "Action code",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "target": {
+          "type": "string",
+          "description": "Target entity ID",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "reason": {
+          "type": "string",
+          "description": "Documented reason for the event",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "status": {
+          "type": "string",
+          "description": "Outcome of the action",
+          "enum": ["SUCCESS", "DENIED", "WARNING"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the event"
+        }
+      },
+      "required": [
+        "actorUid",
+        "actorRole",
+        "action",
+        "target",
+        "reason",
+        "status",
+        "createdAt"
+      ]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted administrator membership document.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Admin UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "grantedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when admin access was granted"
+        }
+      },
+      "required": ["uid", "grantedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Operational user profile documents keyed by Firebase Auth UID"
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated PII subcollection storing email and verification metadata"
+    },
+    "/cropLots/{lotId}": {
+      "schema": { "$ref": "#/entities/CropLotRecord" },
+      "description": "Persisted Digital Crop Passport and verification state documents"
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditEvent" },
+      "description": "Immutable operational and administrative audit trail records"
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Trusted administrator registry collection"
+    }
+  }
+}
