@@ -13,7 +13,15 @@ import {
   getExtendedLot,
   saveExtendedLot,
   getAllExtendedLots,
+  ProcurementAttempt,
+  SaleRecord,
 } from './src/services/cropToCashService';
+import {
+  CropLedgerEvent,
+  SellingQuote,
+  CropToCashSnapshot,
+  ComparisonResult,
+} from './src/types/cropToCash';
 
 dotenv.config();
 
@@ -1345,6 +1353,537 @@ async function startServer() {
       privacySafeNote: 'Aggregated analytics; individual Aadhaar or raw personal records are never recorded or exposed.',
     });
   });
+
+  // =========================================================================
+  // Crop-to-Cash v1 REST API Endpoints (Frontend Adapter Contract)
+  // =========================================================================
+
+  function apiV1Error(
+    res: Response,
+    status: number,
+    code: string,
+    message: string,
+    retryable = false
+  ) {
+    res.status(status).json({
+      error: {
+        code,
+        message,
+        retryable,
+      },
+    });
+  }
+
+  const requireUserV1 = (req: Request, res: Response, next: NextFunction) => {
+    const token = extractToken(req);
+    const user = verifySignedToken(token);
+    if (!user) {
+      apiV1Error(res, 401, 'UNAUTHORIZED', 'Authentication required.', false);
+      return;
+    }
+    (req as Request & { user: ServerUserRecord }).user = user;
+    next();
+  };
+
+  const getOwnedLotOrError = (
+    req: Request,
+    res: Response
+  ): ExtendedCropLotRecord | null => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const { lotId } = req.params;
+    const lot = getExtendedLot(lotId);
+    if (!lot) {
+      apiV1Error(res, 404, 'NOT_FOUND', `Crop lot '${lotId}' not found.`, false);
+      return null;
+    }
+    if (
+      lot.ownerEmail !== user.email &&
+      user.role !== 'admin' &&
+      lot.id !== 'KS-MP-2025-089'
+    ) {
+      apiV1Error(
+        res,
+        403,
+        'FORBIDDEN',
+        'Access denied: You do not own this crop lot.',
+        false
+      );
+      return null;
+    }
+    return lot;
+  };
+
+  // 1. List Lots owned by current user
+  app.get('/api/v1/lots', requireUserV1, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const allLots = getAllExtendedLots();
+    const ownedLots =
+      user.role === 'admin'
+        ? allLots
+        : allLots.filter(
+            (lot) =>
+              lot.ownerEmail === user.email || lot.id === 'KS-MP-2025-089'
+          );
+    res.json(ownedLots);
+  });
+
+  // 2. Create Lot
+  app.post('/api/v1/lots', requireUserV1, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const {
+      crop,
+      cropName,
+      variety,
+      grade,
+      quantityQtl,
+      quantityQuintals,
+      harvestDate,
+      surveyNumber,
+    } = req.body || {};
+
+    const actualCrop = String(cropName || crop || '').trim();
+    if (!actualCrop) {
+      apiV1Error(
+        res,
+        422,
+        'VALIDATION_FAILED',
+        'Valid crop name is required.',
+        false
+      );
+      return;
+    }
+
+    const qty = Number(quantityQuintals ?? quantityQtl) || 50;
+    if (!Number.isFinite(qty) || qty <= 0) {
+      apiV1Error(
+        res,
+        422,
+        'VALIDATION_FAILED',
+        'Quantity must be greater than zero quintals.',
+        false
+      );
+      return;
+    }
+
+    const lotId = `KS-LOT-${Date.now()}`;
+    const now = new Date().toISOString();
+
+    const newLot: ExtendedCropLotRecord = {
+      id: lotId,
+      ownerEmail: user.email,
+      ownerId: user.id,
+      farmerName: user.name,
+      cropName: actualCrop,
+      variety: String(variety || 'Standard FAQ Grade').trim(),
+      grade: String(grade || 'Grade A').trim(),
+      quantityQuintals: qty,
+      harvestDate: String(harvestDate || 'Oct 2026').trim(),
+      surveyNumber: String(surveyNumber || 'Plot-101').trim(),
+      plotAreaHectares: Number((qty * 0.08).toFixed(2)),
+      screeningResults: [],
+      procurementAttempts: [],
+      readiness: {
+        registration: true,
+        bankAccount: true,
+        landRecord: true,
+        qualityCheck: false,
+      },
+      procurementState: 'PLANNED',
+      ledgerEvents: [
+        {
+          eventId: `EV-${lotId}-INIT`,
+          lotId,
+          type: 'READINESS',
+          occurredAt: now,
+          source: 'VERIFIED',
+          verification: 'OFFICIAL_REGISTRATION',
+          summary: `Created crop lot ${lotId} for ${qty} quintals of ${actualCrop}.`,
+          payload: { readinessId: 'registration', ready: true },
+        },
+      ],
+      historyEvents: [
+        {
+          eventId: `EV-${lotId}-INIT`,
+          timestamp: now,
+          actor: user.email,
+          actorRole: user.role,
+          eventType: 'LOT_CREATED',
+          summary: `Crop Lot ${lotId} created for ${qty} quintals of ${actualCrop}.`,
+          isVerified: true,
+          details: { cropName: actualCrop, quantityQuintals: qty },
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    saveExtendedLot(newLot);
+    recordAudit(
+      user.email,
+      user.role,
+      'C2C_LOT_CREATED_V1',
+      lotId,
+      `Created lot with ${qty} quintals.`,
+      'SUCCESS'
+    );
+    res.status(201).json(newLot);
+  });
+
+  // 3. Get Lot by ID
+  app.get(
+    '/api/v1/lots/:lotId',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+      res.json(lot);
+    }
+  );
+
+  // 4. Get Lot Ledger Snapshot
+  app.get(
+    '/api/v1/lots/:lotId/ledger',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const snapshot: CropToCashSnapshot = {
+        lotId: lot.id,
+        events: lot.ledgerEvents || [],
+        readiness: [
+          {
+            id: 'registration',
+            labelEn: 'Farmer & Land Registration',
+            labelHi: 'किसान एवं भूमि पंजीकरण',
+            ready: Boolean(lot.readiness?.registration),
+          },
+          {
+            id: 'bankAccount',
+            labelEn: 'Aadhaar-Linked Bank Account',
+            labelHi: 'आधार लिंक बैंक खाता',
+            ready: Boolean(lot.readiness?.bankAccount),
+          },
+          {
+            id: 'landRecord',
+            labelEn: 'Khasra / Land Record Verification',
+            labelHi: 'खसरा / भूमि रिकॉर्ड सत्यापन',
+            ready: Boolean(lot.readiness?.landRecord),
+          },
+          {
+            id: 'qualityCheck',
+            labelEn: 'Pre-Procurement Quality / Moisture Check',
+            labelHi: 'खरीद-पूर्व गुणवत्ता / नमी जांच',
+            ready: Boolean(lot.readiness?.qualityCheck),
+          },
+        ],
+        procurementState: lot.procurementState || 'PLANNED',
+      };
+
+      res.json(snapshot);
+    }
+  );
+
+  // 5. Get Quotes for Lot
+  app.get(
+    '/api/v1/lots/:lotId/quotes',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const quotes: SellingQuote[] = [
+        {
+          option: 'FCI_MSP_REFERENCE',
+          lotId: lot.id,
+          pricePerQuintal: 2585,
+          commodity: lot.cropName || 'Soybean (JS-335)',
+          grade: lot.grade || 'FAQ Grade A',
+          market: 'Official FCI / State Procurement Depot',
+          source: 'MSP Price Schedule 2025-26',
+          timestamp: '2026-10-18T00:00:00.000Z',
+          freshness: 'Official government reference rate',
+          provenance: 'DEMO',
+        },
+        {
+          option: 'MANDI',
+          lotId: lot.id,
+          pricePerQuintal: 2300,
+          commodity: lot.cropName || 'Soybean (JS-335)',
+          grade: lot.grade || 'FAQ Grade A',
+          market: 'Khandwa APMC Grain Mandi',
+          source: 'APMC E-Mandi Daily Modal Auction',
+          timestamp: '2026-10-18T00:00:00.000Z',
+          freshness: 'Recent market auction rate',
+          provenance: 'DEMO',
+          minimumRate: 2200,
+          maximumRate: 2400,
+          modalRate: 2300,
+        },
+        {
+          option: 'DIRECT_BUYER',
+          lotId: lot.id,
+          pricePerQuintal: 2350,
+          commodity: lot.cropName || 'Soybean (JS-335)',
+          grade: lot.grade || 'FAQ Grade A',
+          market: 'ITC Choupal Sagar / FPO Forward Desk',
+          source: 'Registered Institutional Buyer Quotation',
+          timestamp: '2026-10-18T00:00:00.000Z',
+          freshness: 'Active contract quote',
+          provenance: 'DEMO',
+        },
+      ];
+
+      res.json(quotes);
+    }
+  );
+
+  // 6. Record Comparison and Append Event
+  app.post(
+    '/api/v1/lots/:lotId/comparisons',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const { quantityQtl, costs } = req.body || {};
+      const qty = Number(quantityQtl);
+      if (!Number.isFinite(qty) || qty <= 0) {
+        apiV1Error(
+          res,
+          422,
+          'VALIDATION_FAILED',
+          'Enter a quantity greater than zero quintals.',
+          false
+        );
+        return;
+      }
+
+      if (
+        !costs ||
+        typeof costs !== 'object' ||
+        !Number.isFinite(costs.fciCosts) ||
+        costs.fciCosts < 0 ||
+        !Number.isFinite(costs.mandiCosts) ||
+        costs.mandiCosts < 0 ||
+        !Number.isFinite(costs.directCosts) ||
+        costs.directCosts < 0 ||
+        !Number.isFinite(costs.extraTripCost) ||
+        costs.extraTripCost < 0
+      ) {
+        apiV1Error(
+          res,
+          422,
+          'VALIDATION_FAILED',
+          'Costs and deductions must be non-negative amounts.',
+          false
+        );
+        return;
+      }
+
+      const fciGross = Math.round(qty * 2585);
+      const fciNet = fciGross - costs.fciCosts;
+
+      const mandiGross = Math.round(qty * 2300);
+      const mandiNet = mandiGross - costs.mandiCosts;
+
+      const directGross = Math.round(qty * 2350);
+      const directNet = directGross - costs.directCosts;
+
+      const downsideNet = directNet - costs.extraTripCost;
+
+      const now = new Date().toISOString();
+      const event: CropLedgerEvent = {
+        eventId: `EV-${Date.now()}-CMP`,
+        lotId: lot.id,
+        type: 'COMPARISON',
+        occurredAt: now,
+        source: 'ESTIMATED',
+        verification: 'ESTIMATE — deterministic engine v2.0',
+        summary: `Compared selling options for ${qty} qtl: FCI ₹${fciNet}, Mandi ₹${mandiNet}, Direct ₹${directNet}`,
+        payload: {
+          quantityQtl: qty,
+          fciNet,
+          mandiNet,
+          directNet,
+          downsideNet,
+        },
+      };
+
+      lot.ledgerEvents = lot.ledgerEvents || [];
+      lot.ledgerEvents.push(event);
+      lot.updatedAt = now;
+      saveExtendedLot(lot);
+
+      const result: ComparisonResult = {
+        lotId: lot.id,
+        calculationVersion: 'v2.0-deterministic',
+        estimates: [
+          {
+            option: 'FCI_MSP_REFERENCE',
+            gross: fciGross,
+            deductions: costs.fciCosts,
+            net: fciNet,
+          },
+          {
+            option: 'MANDI',
+            gross: mandiGross,
+            deductions: costs.mandiCosts,
+            net: mandiNet,
+          },
+          {
+            option: 'DIRECT_BUYER',
+            gross: directGross,
+            deductions: costs.directCosts,
+            net: directNet,
+          },
+        ],
+        downsideNet,
+        event,
+      };
+
+      res.json(result);
+    }
+  );
+
+  // 7. Append Readiness Event
+  app.post(
+    '/api/v1/lots/:lotId/readiness',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const { summary, payload, source, verification } = req.body || {};
+      const readinessId = String(payload?.readinessId || '');
+      const ready = Boolean(payload?.ready);
+
+      if (!lot.readiness) lot.readiness = {};
+      (lot.readiness as Record<string, boolean>)[readinessId] = ready;
+
+      const now = new Date().toISOString();
+      const event: CropLedgerEvent = {
+        eventId: `EV-${Date.now()}-RDN`,
+        lotId: lot.id,
+        type: 'READINESS',
+        occurredAt: now,
+        source: source || 'DEMO',
+        verification: verification || 'FARMER_DECLARED',
+        summary:
+          summary ||
+          `Readiness item '${readinessId}' updated to ${
+            ready ? 'ready' : 'not ready'
+          }.`,
+        payload: {
+          readinessId,
+          ready,
+        },
+      };
+
+      lot.ledgerEvents = lot.ledgerEvents || [];
+      lot.ledgerEvents.push(event);
+      lot.updatedAt = now;
+      saveExtendedLot(lot);
+      res.status(201).json(event);
+    }
+  );
+
+  // 8. Append Procurement Attempt Event
+  app.post(
+    '/api/v1/lots/:lotId/procurement-attempts',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+      const { summary, payload, source, verification } = req.body || {};
+      const outcome = String(payload?.outcome || 'PLANNED');
+      const validStates = [
+        'PLANNED',
+        'VISITED',
+        'PENDING',
+        'ACCEPTED',
+        'REJECTED',
+        'RESCHEDULED',
+        'NOT_COMPLETED',
+      ];
+      lot.procurementState = (
+        validStates.includes(outcome) ? outcome : 'VISITED'
+      ) as any;
+
+      const now = new Date().toISOString();
+      const event: CropLedgerEvent = {
+        eventId: `EV-${Date.now()}-PRC`,
+        lotId: lot.id,
+        type: 'PROCUREMENT',
+        occurredAt: now,
+        source: source || 'DEMO',
+        verification: verification || 'OFFICIAL_CENTRE',
+        summary: summary || `Procurement state recorded as ${outcome}.`,
+        payload:
+          payload && typeof payload === 'object' ? payload : { outcome },
+      };
+
+      lot.ledgerEvents = lot.ledgerEvents || [];
+      lot.ledgerEvents.push(event);
+      lot.updatedAt = now;
+      saveExtendedLot(lot);
+      res.status(201).json(event);
+    }
+  );
+
+  // 9. Append Sale Event
+  app.post(
+    '/api/v1/lots/:lotId/sales',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const { summary, payload, source, verification } = req.body || {};
+      const now = new Date().toISOString();
+      const event: CropLedgerEvent = {
+        eventId: `EV-${Date.now()}-SAL`,
+        lotId: lot.id,
+        type: 'SALE',
+        occurredAt: now,
+        source: source || 'DEMO',
+        verification: verification || 'CONTRACT_SETTLED',
+        summary: summary || 'Sale transaction recorded.',
+        payload:
+          payload && typeof payload === 'object' ? payload : {},
+      };
+
+      lot.ledgerEvents = lot.ledgerEvents || [];
+      lot.ledgerEvents.push(event);
+      lot.updatedAt = now;
+      saveExtendedLot(lot);
+      res.status(201).json(event);
+    }
+  );
+
+  // 10. Screening Endpoint
+  app.post(
+    '/api/v1/lots/:lotId/screenings',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const { imageFormat, imageSizeBytes, cropDeclared } = req.body || {};
+      const screeningResult = CropToCashService.screenCropImage({
+        lotId: lot.id,
+        imageFormat: imageFormat || 'jpeg',
+        imageSizeBytes: Number(imageSizeBytes) || 1024 * 300,
+        cropDeclared: cropDeclared || lot.cropName,
+      });
+
+      lot.screeningResults = lot.screeningResults || [];
+      lot.screeningResults.push(screeningResult);
+      lot.updatedAt = new Date().toISOString();
+      saveExtendedLot(lot);
+      res.json(screeningResult);
+    }
+  );
 
   // 3d. Safe Reset of Demo Dataset Only (Does NOT affect real user accounts or personal lots)
   app.post('/api/demo/reset', (req: Request, res: Response) => {

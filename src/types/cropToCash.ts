@@ -11,6 +11,7 @@ export type ProcurementState =
   | 'PLANNED'
   | 'VISITED'
   | 'PENDING'
+  | 'ACCEPTED'
   | 'REJECTED'
   | 'RESCHEDULED'
   | 'NOT_COMPLETED';

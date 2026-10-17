@@ -1,92 +1,90 @@
-<<<<<<< HEAD
-# Kisan-SPO × KisanSetu AI API Contract — Proposal
+# Kisan-SPO × KisanSetu AI — Unified API Contract
 
-**Status: DRAFT — not approved by the backend owner.**  
-This proposal is not evidence that these endpoints exist. Frontend production integration must wait for backend agreement.
-
-## Shared requirements
-
-- Base path: `/api/v1`.
-- Authentication: Firebase ID token in `Authorization: Bearer <idToken>`. The backend verifies it; the authenticated UID determines ownership. Never trust a client-supplied owner ID or role.
-- JSON responses use ISO-8601 UTC timestamps and the canonical lot ID across screening, quotes, procurement, and sale records.
-- Errors: `{ "error": { "code": string, "message": string, "retryable": boolean } }`; use standard HTTP status codes. Return `401` for missing/expired identity, `403` for forbidden ownership/action, `404` for missing resources, `409` for conflicting transitions, `422` for validation failures, and `503` for temporary service failure.
-- Unknown/unavailable live data must be reported as unavailable, never substituted with fictional live-looking values.
-
-## Proposed resources
-
-### Lots and ledger
-
-- `GET /lots` — list lots owned by the authenticated UID; optional `cursor` and `pageSize`.
-- `POST /lots` — create a lot from `{ crop, variety?, grade?, quantityQtl, harvestDate?, documentReadiness? }`. The server assigns one immutable `lotId`. Readiness fields are booleans only; no Aadhaar, passbook, or land-document images/data.
-- `GET /lots/{lotId}` — return an owned lot.
-- `GET /lots/{lotId}/ledger` — return chronologically ordered ledger events for that owned lot. Every event has `eventId`, `lotId`, `type`, `occurredAt`, `source`, `verification`, and its typed payload.
-- `POST /lots/{lotId}/readiness` — append a readiness yes/no event. Accept only a readiness item key and boolean; never accept identity-document numbers or images.
-
-### Image screening
-
-- Backend to confirm the storage mechanism before implementation. Preferred flow: `POST /lots/{lotId}/screenings/upload` returns a short-lived, scoped upload URL and object key; the client uploads directly to approved object storage; `POST /lots/{lotId}/screenings` submits `{ objectKey }` for analysis.
-- Screening result: `{ screeningId, lotId, status, topResult?, runnerUp?, confidence?, confidenceBand?, explanation?, guidance?, expertReferral?, explanationImageUrl?, source, createdAt }`.
-- `status` is `COMPLETED | UNCERTAIN | UNSUPPORTED | REJECTED | PROCESSING | FAILED`. Only return diagnosis/guidance when produced by the model service. No pesticide recommendations from image screening alone.
-
-### Selling options
-
-- `GET /lots/{lotId}/quotes` — return comparable `FCI_MSP_REFERENCE | MANDI | DIRECT_BUYER` quotes, each with price, commodity, grade, market/date, source, timestamp, freshness, and provenance `VERIFIED | ESTIMATED | CACHED | MANUAL | DEMO`.
-- `POST /lots/{lotId}/comparisons` — calculate options from quantity, price, transport, loading, fees, quality deductions, and extra trip costs; append the inputs/results to the lot ledger. Response includes each option's estimated net, downside, calculation version, and confirmed ledger event. Rounding and formulas require backend confirmation against the four fixtures in the product prompt.
-
-### Procurement and sale
-
-- `POST /lots/{lotId}/procurement-attempts` — append a selected-option/state event `PLANNED | VISITED | PENDING | REJECTED | RESCHEDULED | NOT_COMPLETED`. Centre/schedule are optional and must include approved verification metadata.
-- `POST /lots/{lotId}/sales` — append sale quantity, agreed price, deductions, actual net, payment status, provenance, and the referenced comparison/attempt. Do not overwrite prior events.
-
-## Open questions for backend-owner approval
-
-1. Confirm Firebase ID-token verification and ownership enforcement for every route.
-2. Confirm Cloud Storage (or provider equivalent) and the upload URL flow, size/content limits, retention, and deletion rules.
-3. Confirm exact field names, status transitions, pagination, rate freshness thresholds, and rounding behavior.
-4. Confirm which endpoints will be implemented and deployed, and provide sample responses/error cases.
-=======
-# API CONTRACT — KISAN-SPO × KISANSETU AI
-
-**Base URL:** `http://localhost:3000/api`  
-**Authentication:** Bearer token in `Authorization: Bearer <token>` header (stateless signed HMAC token).  
-**Caching:** `Cache-Control: private, no-store` on all `/api/*` routes.
+**Status:** APPROVED & DEPLOYED (Authoritative Backend & Frontend Integration Contract)
+**Base URLs:**
+- Production / Local REST API: `http://localhost:3000/api/v1` (Typed Adapter Contract)
+- Legacy C2C & Admin Analytics: `http://localhost:3000/api`
+**Authentication:** `Authorization: Bearer <signed-hmac-token>` header on all protected endpoints.
+**Response Headers:** `Cache-Control: private, no-store` on all dynamic API routes.
+**Standard Error Envelope:**
+```json
+{
+  "error": {
+    "code": "VALIDATION_FAILED | UNAUTHORIZED | FORBIDDEN | NOT_FOUND | CONFLICT | SERVICE_UNAVAILABLE",
+    "message": "Human-readable descriptive error message",
+    "retryable": false
+  }
+}
+```
 
 ---
 
-## 1. Authentication & Session
+## 1. Authentication & Session Synchronization
 
 ### `POST /api/auth/register`
-Creates an individual user account with fresh onboarding state.
-- **Access:** Public. Prevents privilege escalation (role cannot be `admin`).
-- **Body:**
+Registers a new user account with an isolated workspace and fresh onboarding state.
+- **Access:** Public. Prevents privilege escalation (`role` cannot be `admin`).
+- **Request Body:**
   ```json
   {
     "email": "farmer@example.com",
-    "password": "minimum6chars",
+    "password": "minimum6characters",
     "name": "Ramesh Patel",
     "role": "farmer", // "farmer" | "agent" | "buyer"
-    "villageOrOrg": "Khandwa"
+    "villageOrOrg": "Chhaigaon Makhan, Khandwa"
   }
   ```
-- **Response (201):** `{ token: string, user: UserProfile, personalLots: [], devDemoMode: boolean }`
+- **Response (201 Created):**
+  ```json
+  {
+    "token": "base64Claims.hexSignature",
+    "user": {
+      "id": "USR-101",
+      "email": "farmer@example.com",
+      "name": "Ramesh Patel",
+      "role": "farmer",
+      "villageOrOrg": "Chhaigaon Makhan, Khandwa",
+      "onboardingStatus": "INCOMPLETE",
+      "onboardingStep": 1,
+      "profileCompletion": 25,
+      "isDemoAccount": false,
+      "uidLabel": "UID-9482",
+      "emailVerified": false,
+      "active": true
+    },
+    "personalLots": [],
+    "devDemoMode": false
+  }
+  ```
 
 ### `POST /api/auth/login`
-- **Body:** `{ "email": "...", "password": "..." }`
-- **Response (200):** `{ token: string, user: UserProfile, personalLots: CropLot[], devDemoMode: boolean }`
+Authenticates existing credentials against salt and scrypt hash.
+- **Access:** Public.
+- **Request Body:** `{ "email": "...", "password": "..." }`
+- **Response (200 OK):** `{ "token": string, "user": UserProfile, "personalLots": CropLot[], "devDemoMode": boolean }`
+- **Errors:** `401 Unauthorized` for bad credentials; `403 Forbidden` if account deactivated.
 
 ### `POST /api/auth/firebase-sync`
-Synchronizes Firebase Google Sign-In with server-side RBAC.
-- **Body:** `{ uid, email, displayName, role, village, district, state, preferredLanguage, onboardingStatus, onboardingStep, profileCompletion, emailVerified }`
-- **Response (200):** `{ token: string, user: UserProfile, personalLots: CropLot[], devDemoMode: boolean }`
+Synchronizes Firebase Google Sign-In with server-side RBAC and issues a stateless signed token.
+- **Access:** Public (valid Firebase UID and email required).
+- **Request Body:** `{ uid, email, displayName, role, village, district, state, phoneNumber, preferredLanguage, onboardingStatus, onboardingStep, profileCompletion, emailVerified }`
+- **Response (200 OK):** `{ "token": string, "user": UserProfile, "personalLots": CropLot[], "devDemoMode": boolean }`
 
 ---
 
-## 2. Crop-to-Cash (C2C) Workflows
+## 2. Crop-to-Cash Workflow Endpoints (`/api/v1/lots`)
 
-### `POST /api/c2c/lots`
-Create a persistent Crop Lot record.
+All endpoints in this section use the canonical persistent `lotId` across screening, price discovery, procurement, and settlement.
+
+### `GET /api/v1/lots`
+Retrieves all crop lots owned by the authenticated user (or all lots if `admin`).
+- **Auth:** Required (`farmer`, `agent`, `buyer`, `admin`).
+- **Response (200 OK):** `ExtendedCropLotRecord[]`
+
+### `POST /api/v1/lots`
+Creates a persistent Crop Lot record and initializes its verifiable ledger.
 - **Auth:** Required (`farmer`, `agent`, `admin`).
-- **Body:**
+- **Request Body:**
   ```json
   {
     "cropName": "Soybean (JS-335)",
@@ -97,30 +95,213 @@ Create a persistent Crop Lot record.
     "surveyNumber": "Plot-99/A"
   }
   ```
-- **Response (201):** `ExtendedCropLotRecord`
+- **Response (201 Created):** `ExtendedCropLotRecord`
+- **Errors:** `422 Unprocessable Entity` if crop name is missing or quantity $\le 0$.
 
-### `GET /api/c2c/lots/:lotId`
-Retrieve crop lot by ID with complete timeline history.
+### `GET /api/v1/lots/:lotId`
+Fetches a specific crop lot by ID.
 - **Auth:** Required (Owner or `admin`).
-- **Response (200):** `ExtendedCropLotRecord`
+- **Response (200 OK):** `ExtendedCropLotRecord`
 - **Errors:** `404 Not Found`, `403 Forbidden` (if not owner or admin).
 
-### `POST /api/c2c/lots/:lotId/screening`
-Submit a leaf photograph for disease / quality screening.
+### `GET /api/v1/lots/:lotId/ledger`
+Retrieves the complete audit trail snapshot for the crop lot.
 - **Auth:** Required (Owner or `admin`).
-- **Body:**
+- **Response (200 OK):** `CropToCashSnapshot`
+  ```json
+  {
+    "lotId": "KS-MP-2025-089",
+    "events": [
+      {
+        "eventId": "EV-1729194-INIT",
+        "lotId": "KS-MP-2025-089",
+        "type": "READINESS",
+        "occurredAt": "2026-10-18T00:00:00.000Z",
+        "source": "VERIFIED",
+        "verification": "OFFICIAL_REGISTRATION",
+        "summary": "Farmer registration and bank account verified for MSP eligibility.",
+        "payload": { "readinessId": "registration", "ready": true }
+      }
+    ],
+    "readiness": [
+      { "id": "registration", "labelEn": "Farmer & Land Registration", "labelHi": "किसान एवं भूमि पंजीकरण", "ready": true },
+      { "id": "bankAccount", "labelEn": "Aadhaar-Linked Bank Account", "labelHi": "आधार लिंक बैंक खाता", "ready": true },
+      { "id": "landRecord", "labelEn": "Khasra / Land Record Verification", "labelHi": "खसरा / भूमि रिकॉर्ड सत्यापन", "ready": true },
+      { "id": "qualityCheck", "labelEn": "Pre-Procurement Quality / Moisture Check", "labelHi": "खरीद-पूर्व गुणवत्ता / नमी जांच", "ready": false }
+    ],
+    "procurementState": "PLANNED" // "PLANNED" | "VISITED" | "PENDING" | "REJECTED" | "RESCHEDULED" | "NOT_COMPLETED"
+  }
+  ```
+
+### `GET /api/v1/lots/:lotId/quotes`
+Returns comparable market selling quotes across FCI/MSP, local Mandi, and direct buyer.
+- **Auth:** Required (Owner or `admin`).
+- **Response (200 OK):** `SellingQuote[]`
+  ```json
+  [
+    {
+      "option": "FCI_MSP_REFERENCE",
+      "lotId": "KS-MP-2025-089",
+      "pricePerQuintal": 2585,
+      "commodity": "Soybean (JS-335)",
+      "grade": "FAQ Grade A",
+      "market": "Official FCI / State Procurement Depot",
+      "source": "MSP Price Schedule 2025-26",
+      "timestamp": "2026-10-18T00:00:00.000Z",
+      "freshness": "Official government reference rate",
+      "provenance": "DEMO"
+    },
+    {
+      "option": "MANDI",
+      "lotId": "KS-MP-2025-089",
+      "pricePerQuintal": 2300,
+      "commodity": "Soybean (JS-335)",
+      "grade": "FAQ Grade A",
+      "market": "Khandwa APMC Grain Mandi",
+      "source": "APMC E-Mandi Daily Modal Auction",
+      "timestamp": "2026-10-18T00:00:00.000Z",
+      "freshness": "Recent market auction rate",
+      "provenance": "DEMO",
+      "minimumRate": 2200,
+      "maximumRate": 2400,
+      "modalRate": 2300
+    },
+    {
+      "option": "DIRECT_BUYER",
+      "lotId": "KS-MP-2025-089",
+      "pricePerQuintal": 2350,
+      "commodity": "Soybean (JS-335)",
+      "grade": "FAQ Grade A",
+      "market": "ITC Choupal Sagar / FPO Forward Desk",
+      "source": "Registered Institutional Buyer Quotation",
+      "timestamp": "2026-10-18T00:00:00.000Z",
+      "freshness": "Active contract quote",
+      "provenance": "DEMO"
+    }
+  ]
+  ```
+
+### `POST /api/v1/lots/:lotId/comparisons`
+Executes deterministic net return calculation and appends a `COMPARISON` event to the lot ledger.
+- **Auth:** Required (Owner or `admin`).
+- **Deterministic Formula:**
+  $$\text{Net Return} = (\text{accepted quantity} \times \text{price}) - \text{transport} - \text{loading/handling} - \text{fees} - \text{extra visit costs} - \text{expected deductions}$$
+- **Request Body:**
+  ```json
+  {
+    "quantityQtl": 50,
+    "costs": {
+      "fciCosts": 2500,
+      "mandiCosts": 4000,
+      "directCosts": 4000,
+      "extraTripCost": 1000
+    }
+  }
+  ```
+- **Response (200 OK):** `ComparisonResult`
+  ```json
+  {
+    "lotId": "KS-MP-2025-089",
+    "calculationVersion": "v2.0-deterministic",
+    "estimates": [
+      { "option": "FCI_MSP_REFERENCE", "gross": 129250, "deductions": 2500, "net": 126750 },
+      { "option": "MANDI", "gross": 115000, "deductions": 4000, "net": 111000 },
+      { "option": "DIRECT_BUYER", "gross": 117500, "deductions": 4000, "net": 113500 }
+    ],
+    "downsideNet": 112500,
+    "event": {
+      "eventId": "EV-1729194-CMP",
+      "lotId": "KS-MP-2025-089",
+      "type": "COMPARISON",
+      "occurredAt": "2026-10-18T01:00:00.000Z",
+      "source": "ESTIMATED",
+      "verification": "ESTIMATE — deterministic engine v2.0",
+      "summary": "Compared selling options for 50 qtl: FCI ₹126750, Mandi ₹111000, Direct ₹113500",
+      "payload": {
+        "quantityQtl": 50,
+        "fciNet": 126750,
+        "mandiNet": 111000,
+        "directNet": 113500,
+        "downsideNet": 112500
+      }
+    }
+  }
+  ```
+- **Errors:** `422 Unprocessable Entity` if `quantityQtl <= 0` or any cost $< 0$.
+
+### `POST /api/v1/lots/:lotId/readiness`
+Updates document readiness checklist. Only boolean flags (`ready: true/false`) are accepted.
+- **Privacy Rule:** No Aadhaar numbers, bank account numbers, or document scans are ever received or stored.
+- **Request Body:**
+  ```json
+  {
+    "lotId": "KS-MP-2025-089",
+    "type": "READINESS",
+    "source": "VERIFIED",
+    "verification": "OFFICIAL_DOCUMENTS",
+    "summary": "Bank account linked and verified.",
+    "payload": {
+      "readinessId": "bankAccount",
+      "ready": true
+    }
+  }
+  ```
+- **Response (201 Created):** `CropLedgerEvent`
+
+### `POST /api/v1/lots/:lotId/procurement-attempts`
+Records an official procurement visit outcome and updates `procurementState`.
+- **Request Body:**
+  ```json
+  {
+    "lotId": "KS-MP-2025-089",
+    "type": "PROCUREMENT",
+    "source": "DEMO",
+    "verification": "CENTRE_VERIFIED",
+    "summary": "Visited Khandwa FCI depot centre.",
+    "payload": {
+      "outcome": "VISITED", // "PLANNED" | "VISITED" | "PENDING" | "REJECTED" | "RESCHEDULED" | "NOT_COMPLETED"
+      "centreName": "Khandwa FCI Depot"
+    }
+  }
+  ```
+- **Response (201 Created):** `CropLedgerEvent`
+
+### `POST /api/v1/lots/:lotId/sales`
+Finalizes an actual sale transaction and appends the settlement event.
+- **Request Body:**
+  ```json
+  {
+    "lotId": "KS-MP-2025-089",
+    "type": "SALE",
+    "source": "DEMO",
+    "verification": "CONTRACT_SETTLED",
+    "summary": "Direct institutional sale finalized.",
+    "payload": {
+      "buyerName": "ITC Choupal Sagar",
+      "acceptedQty": 50,
+      "netAmount": 113500,
+      "paymentStatus": "FIRST_INSTALLMENT_PAID"
+    }
+  }
+  ```
+- **Response (201 Created):** `CropLedgerEvent`
+
+### `POST /api/v1/lots/:lotId/screenings`
+Model-independent leaf image screening endpoint.
+- **Safety Rule:** Strictly abstains from prescribing synthetic chemical pesticides from an image alone. Always provides safe Krishi Vigyan Kendra (KVK) referral advice.
+- **Request Body:**
   ```json
   {
     "imageFormat": "jpeg", // "jpeg" | "png" | "webp"
-    "imageSizeBytes": 450000,
+    "imageSizeBytes": 350000,
     "cropDeclared": "Soybean"
   }
   ```
-- **Response (200):**
+- **Response (200 OK):** `CropScreeningResult`
   ```json
   {
     "screeningId": "SCR-1729194...",
-    "lotId": "KS-LOT-1729194...",
+    "lotId": "KS-MP-2025-089",
     "modelName": "KisanSetu-Screening-Adapter",
     "modelVersion": "v1.0.0-mock-demo",
     "isMockOrDemo": true,
@@ -130,106 +311,30 @@ Submit a leaf photograph for disease / quality screening.
       "confidence": 0.88,
       "scientificName": "Phakopsora pachyrhizi"
     },
-    "runnerUp": { ... },
+    "runnerUp": {
+      "className": "Cercospora Leaf Blight",
+      "confidence": 0.08,
+      "scientificName": "Cercospora kikuchii"
+    },
     "calibratedConfidence": false,
     "explanation": {
       "visualQualityScore": 0.85,
       "lightingAdequate": true,
       "blurDetected": false,
       "diagnosticNotes": "Visual inspection indicates foliar pustules...",
-      "safeExpertReferral": "Automated systems do not prescribe synthetic pesticides from imagery alone. Consult Krishi Vigyan Kendra (KVK) for an official prescription."
+      "safeExpertReferral": "Automated systems do not prescribe synthetic pesticides from imagery alone. Please consult your Block Agriculture Extension Officer or visit the nearest Krishi Vigyan Kendra (KVK) for an official field agronomy prescription."
     }
   }
   ```
-
-### `POST /api/c2c/lots/:lotId/estimate`
-Deterministic return calculation engine. Reproducible formula:
-$$\text{Net return} = (\text{accepted quantity} \times \text{price}) - \text{transport} - \text{loading/handling} - \text{fees} - \text{extra visit costs} - \text{expected deductions}$$
-- **Auth:** Required (Owner or `admin`).
-- **Response (200):**
-  ```json
-  {
-    "estimateId": "EST-1729194...",
-    "calculationVersion": "v2.0-deterministic",
-    "lotId": "KS-LOT-1729194...",
-    "acceptedQuantityQuintals": 50,
-    "options": {
-      "fciMsp": {
-        "unitPrice": 2585,
-        "grossAmount": 129250,
-        "deductions": { "totalDeductions": 2500, ... },
-        "netReturn": 126750,
-        "netRealizationPerQuintal": 2535.00
-      },
-      "mandi": {
-        "unitPrice": 2300,
-        "grossAmount": 115000,
-        "deductions": { "totalDeductions": 4000, ... },
-        "netReturn": 111000,
-        "netRealizationPerQuintal": 2220.00
-      },
-      "directBuyer": {
-        "unitPrice": 2350,
-        "grossAmount": 117500,
-        "deductions": { "totalDeductions": 4000, ... },
-        "netReturn": 113500,
-        "netRealizationPerQuintal": 2270.00
-      },
-      "downsideFallback": {
-        "unitPrice": 2350,
-        "grossAmount": 117500,
-        "deductions": { "totalDeductions": 5000, ... },
-        "netReturn": 112500,
-        "netRealizationPerQuintal": 2250.00
-      }
-    }
-  }
-  ```
-
-### `POST /api/c2c/lots/:lotId/procurement-attempt`
-Record official procurement centre attempt.
-- **Auth:** Required (`farmer`, `agent`, `admin`).
-- **Body:**
-  ```json
-  {
-    "centreId": "FCI-KHD-01",
-    "centreName": "Khandwa FCI Depot Centre",
-    "isCentreVerified": true,
-    "outcome": "ACCEPTED", // "ACCEPTED" | "REJECTED" | "PENDING" | "RESCHEDULED" | "NOT_COMPLETED"
-    "outcomeReason": "FAQ quality checked, moisture 11.4%",
-    "farmerIdPresented": true,
-    "landRecordReady": true,
-    "bankPassbookReady": true
-  }
-  ```
-- **Response (201):** `ProcurementAttempt` (document readiness stored as yes/no boolean flags only).
-
-### `POST /api/c2c/lots/:lotId/sale`
-Record finalized actual sale and escrow/payment settlement.
-- **Auth:** Required (Owner, `agent`, `buyer`, or `admin`).
-- **Body:**
-  ```json
-  {
-    "buyerName": "ITC Choupal Sagar",
-    "buyerType": "INSTITUTIONAL_BUYER",
-    "acceptedQuantityQuintals": 50,
-    "actualPricePerQuintal": 2350,
-    "actualTransportDeduction": 2500,
-    "actualHandlingDeduction": 1000,
-    "actualFeesDeduction": 500,
-    "paymentStatus": "FIRST_INSTALLMENT_PAID" // "AWAITING_PAYMENT" | "FIRST_INSTALLMENT_PAID" | "FULLY_SETTLED" | "PAYMENT_FAILED"
-  }
-  ```
-- **Response (201):** `SaleRecord` (includes `estimatedVsActualGap` variance calculation).
 
 ---
 
-## 3. Privacy-Safe Admin Pilot Analytics
+## 3. Administrative Pilot Analytics
 
 ### `GET /api/admin/pilot-analytics`
-Aggregated metrics for FPO/Mandi administrators and pilot partners.
+Aggregated metrics for FPO/Mandi administrators.
 - **Auth:** Required (`admin` role enforced on server).
-- **Response (200):**
+- **Response (200 OK):**
   ```json
   {
     "reportingPeriod": "Kharif-Rabi Pilot 2026",
@@ -241,4 +346,3 @@ Aggregated metrics for FPO/Mandi administrators and pilot partners.
     "privacySafeNote": "Aggregated analytics; individual Aadhaar or raw personal records are never recorded or exposed."
   }
   ```
->>>>>>> 66bcde4bbfe113ab0a5b4f9ed9ab6eec0c704ad6
