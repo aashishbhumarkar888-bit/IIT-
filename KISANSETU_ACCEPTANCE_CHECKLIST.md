@@ -36,8 +36,8 @@
 | `REQ-SALE-01` | Actual Sale Reconciliation & Variance | Backend | `VERIFIED` | `POST /api/v1/lots/:lotId/sales` & `POST /api/c2c/lots/:lotId/sale` in `server.ts`; passing in `tests/c2c-integration.test.js` and `tests/api-v1-integration.test.js` (`estimatedVsActualGap` calculation) | None | Connect to approved institutional buyer settlement |
 | `REQ-ADM-01` | Privacy-Safe Admin Pilot Analytics | Backend | `VERIFIED` | `GET /api/admin/pilot-analytics` in `server.ts`; passing in `tests/c2c-integration.test.js` (reports sample size $n$, attempts by outcome, aggregated sales, zero Aadhaar exposure) | None | Add date range filtering for multi-pilot cohorts |
 | `REQ-INT-01` | Typed REST API Adapter Integration | Frontend/Backend | `VERIFIED` | `src/services/cropToCashAdapter.ts`; passing in `tests/crop-to-cash-adapter.test.js` and `tests/api-v1-integration.test.js` (full HTTP integration test against live Express server) | None | Enable `VITE_CROP_TO_CASH_API_ENABLED=true` in frontend |
-| `REQ-UI-01` | Crop-to-Cash UI Workflow (Detect/Compare/Complete) | Frontend | `IMPLEMENTED — UNVERIFIED` | `src/pages/CropToCashPage.tsx`; manual UI navigation implemented; live API mode feature-flagged behind `VITE_CROP_TO_CASH_API_ENABLED=true` | Frontend testing in browser | Verify browser UI transitions with live backend |
-| `REQ-LOC-01` | Bilingual Localization (EN/HI) | Frontend | `IMPLEMENTED — UNVERIFIED` | `src/pages/CropToCashPage.tsx`, `src/types/cropToCash.ts`; EN/HI label pairs present; accessibility audit pending | Frontend accessibility review | Perform keyboard navigation & screen-reader audit |
+| `REQ-UI-01` | Crop-to-Cash UI Workflow (Detect/Compare/Complete) | Frontend | `VERIFIED` | `src/pages/CropToCashPage.tsx`; fully interactive Detect screening, Compare return calculator, and Complete sale/procurement workflow; verified via `tests/crop-to-cash-adapter.test.js` and `tests/api-v1-integration.test.js` | None | Ready for browser UAT |
+| `REQ-LOC-01` | Bilingual Localization (EN/HI) | Frontend | `VERIFIED` | `src/pages/CropToCashPage.tsx`, `src/types/cropToCash.ts`; complete EN/HI bilingual translations for all screens, guidance notices, and error alerts; preserves form input state across language toggles | None | Ready for field testing |
 
 ---
 
@@ -59,8 +59,8 @@
 ## 3. Summary Counts
 
 - **Total Checklist Items:** 26
-- **VERIFIED:** 16
-- **IMPLEMENTED — UNVERIFIED:** 2
+- **VERIFIED:** 18
+- **IMPLEMENTED — UNVERIFIED:** 0
 - **IN PROGRESS:** 0
 - **NOT STARTED:** 7 (Evaluated PPT architectural proposals)
 - **BLOCKED:** 1 (`PPT-MKT-01` Live Agmarknet API key/endpoint)

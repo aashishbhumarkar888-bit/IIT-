@@ -7,10 +7,11 @@ import {
   CropToCashAdapter,
 } from '../services/cropToCashAdapter';
 import { calculateSellingOptions } from '../services/cropToCashCalculations';
-import { ComparisonResult } from '../types/cropToCash';
 import {
-  NewCropLedgerEvent,
+  ComparisonResult,
+  CropScreeningResult,
   CropToCashSnapshot,
+  NewCropLedgerEvent,
   ProcurementState,
   SellingOptionKind,
   SellingQuote,
@@ -23,6 +24,7 @@ const PROCUREMENT_STATES: ProcurementState[] = [
   'PLANNED',
   'VISITED',
   'PENDING',
+  'ACCEPTED',
   'REJECTED',
   'RESCHEDULED',
   'NOT_COMPLETED',
@@ -57,13 +59,22 @@ export const CropToCashPage: React.FC = () => {
   const [saleSummary, setSaleSummary] = useState<string>('');
   const [procurementReason, setProcurementReason] = useState<string>('');
   const [saleSaved, setSaleSaved] = useState<boolean>(false);
+  const [hasSubmittedSale, setHasSubmittedSale] = useState<boolean>(false);
   const [comparisonSaved, setComparisonSaved] = useState<boolean>(false);
   const [comparisonResult, setComparisonResult] = useState<{
     inputKey: string;
     result: ComparisonResult;
   } | null>(null);
+
+  // Screening state
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState<string>('');
   const [imageError, setImageError] = useState<string>('');
+  const [screeningResult, setScreeningResult] =
+    useState<CropScreeningResult | null>(null);
+  const [screeningInProgress, setScreeningInProgress] =
+    useState<boolean>(false);
+  const [screeningSaved, setScreeningSaved] = useState<boolean>(false);
 
   const adapter: CropToCashAdapter = useMemo(
     () =>
@@ -131,14 +142,10 @@ export const CropToCashPage: React.FC = () => {
   const displayedEstimates =
     confirmedEstimate?.estimates || estimate.estimates;
   const displayedDownside =
-    confirmedEstimate
-      ? confirmedEstimate.downsideNet
-      : estimate.downsideNet;
+    confirmedEstimate ? confirmedEstimate.downsideNet : estimate.downsideNet;
 
-  const appendEvent = async (
-    event: Omit<NewCropLedgerEvent, 'lotId'>
-  ) => {
-    if (!snapshot) return;
+  const appendEvent = async (event: Omit<NewCropLedgerEvent, 'lotId'>) => {
+    if (!snapshot) return false;
     setSaving(true);
     setError('');
     try {
@@ -160,18 +167,81 @@ export const CropToCashPage: React.FC = () => {
 
   const handleImage = (file?: File) => {
     setImageError('');
-    if (!file) return;
+    setScreeningResult(null);
+    setScreeningSaved(false);
+    if (!file) {
+      setSelectedFile(null);
+      setImageUrl('');
+      return;
+    }
     if (!file.type.startsWith('image/')) {
       setImageError(t('Choose an image file.', 'कृपया छवि फ़ाइल चुनें।'));
+      setSelectedFile(null);
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
       setImageError(
         t('Image must be 10 MB or smaller.', 'छवि 10 MB या उससे छोटी होनी चाहिए।')
       );
+      setSelectedFile(null);
       return;
     }
+    setSelectedFile(file);
     setImageUrl(URL.createObjectURL(file));
+  };
+
+  const runScreening = async () => {
+    if (!selectedFile) return;
+    setScreeningInProgress(true);
+    setImageError('');
+    try {
+      const rawFormat = selectedFile.type.split('/')[1]?.toLowerCase();
+      const imageFormat: 'jpeg' | 'png' | 'webp' =
+        rawFormat === 'png' ? 'png' : rawFormat === 'webp' ? 'webp' : 'jpeg';
+      const result = await adapter.screenImage(currentLot.id, {
+        imageFormat,
+        imageSizeBytes: selectedFile.size,
+        cropDeclared: currentLot.cropName,
+      });
+      setScreeningResult(result);
+    } catch (cause) {
+      setImageError(
+        cause instanceof Error
+          ? cause.message
+          : t('Screening failed. Please retry.', 'छवि जाँच विफल रही। कृपया पुनः प्रयास करें।')
+      );
+    } finally {
+      setScreeningInProgress(false);
+    }
+  };
+
+  const saveScreeningToLedger = async () => {
+    if (!screeningResult) return;
+    const outcomeText =
+      language === 'hi' && screeningResult.topClass?.classNameHi
+        ? screeningResult.topClass.classNameHi
+        : screeningResult.topClass?.className || screeningResult.outcomeCategory;
+    const confText = screeningResult.topClass
+      ? ` (${Math.round(screeningResult.topClass.confidence * 100)}% uncalibrated)`
+      : '';
+
+    const success = await appendEvent({
+      type: 'READINESS',
+      source: screeningResult.isMockOrDemo ? 'DEMO' : 'VERIFIED',
+      verification: 'IMAGE_SCREENING_ADAPTER',
+      summary: `Crop screening: ${outcomeText}${confText}. KVK referral advised; zero synthetic pesticides prescribed.`,
+      payload: {
+        screeningId: screeningResult.screeningId,
+        outcomeCategory: screeningResult.outcomeCategory,
+        topClass: screeningResult.topClass?.className || 'None',
+        calibratedConfidence: screeningResult.calibratedConfidence,
+        uncalibratedConfidence: screeningResult.topClass?.confidence || 0,
+        safeReferral: 'Krishi Vigyan Kendra (KVK)',
+      },
+    });
+    if (success) {
+      setScreeningSaved(true);
+    }
   };
 
   const selectedEstimate = displayedEstimates.find(
@@ -201,7 +271,9 @@ export const CropToCashPage: React.FC = () => {
         </div>
         <button
           type="button"
-          onClick={() => navigate('/crop-passport')}
+          onClick={() =>
+            navigate(`/crop-passport?lot=${encodeURIComponent(currentLot.id)}`)
+          }
           className="min-h-11 rounded-lg border-2 border-[#000080]/30 px-4 py-2 text-sm font-bold text-[#000080] hover:bg-[#E8EAF6]"
         >
           {t('Open this lot’s Crop Passport', 'इस लॉट का फसल पासपोर्ट खोलें')}
@@ -272,52 +344,214 @@ export const CropToCashPage: React.FC = () => {
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           <section className="min-w-0 rounded-2xl border-2 border-[#000080]/20 bg-white p-4 shadow-sm sm:p-6">
             {tab === 'detect' && (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
                   <h2 className="text-xl font-extrabold text-[#000080]">
-                    {t('Crop image screening', 'फसल की छवि जाँच')}
+                    {t('Crop Leaf Image Screening', 'फसल पत्ती छवि जाँच')}
                   </h2>
-                  <p className="mt-1 text-sm">
+                  <p className="mt-1 text-sm text-gray-700">
                     {t(
-                      'Add a photo for preview. Image screening is not connected, so this page will not produce a diagnosis or treatment advice.',
-                      'पूर्वावलोकन के लिए फ़ोटो जोड़ें। छवि जाँच सेवा जुड़ी नहीं है, इसलिए यहाँ कोई रोग-निदान या उपचार सलाह नहीं दी जाएगी।'
+                      'Upload or capture a leaf photo to screen for visual disease symptoms. Automated screening provides safe orientation and referrals to Krishi Vigyan Kendra (KVK); it never prescribes synthetic pesticides.',
+                      'पत्ती की फ़ोटो अपलोड या कैप्चर करके रोग के लक्षणों की जाँच करें। स्वचालित जाँच सुरक्षित मार्गदर्शन व कृषि विज्ञान केंद्र (KVK) संदर्भ प्रदान करती है; यह कभी रासायनिक कीटनाशक नहीं बताती।'
                     )}
                   </p>
                 </div>
-                <label className="flex min-h-24 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-[#000080]/40 bg-[#F7F8FC] p-4 text-center font-bold text-[#000080] focus-within:outline focus-within:outline-4 focus-within:outline-[#138808]">
-                  <span>
-                    {t('Choose a crop image (max 10 MB)', 'फसल की छवि चुनें (अधिकतम 10 MB)')}
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="sr-only"
-                    onChange={(event) => handleImage(event.target.files?.[0])}
-                  />
-                </label>
-                {imageError && <p role="alert" className="text-sm font-bold text-red-800">{imageError}</p>}
-                {imageUrl && (
-                  <figure className="space-y-2">
-                    <img
-                      src={imageUrl}
-                      alt={t('Selected crop photo preview', 'चुनी गई फसल की फ़ोटो का पूर्वावलोकन')}
-                      className="max-h-72 w-full rounded-lg border object-contain"
+
+                <div className="rounded-xl border-2 border-dashed border-[#000080]/30 bg-[#F7F8FC] p-4">
+                  <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center text-center font-bold text-[#000080] focus-within:outline focus-within:outline-4 focus-within:outline-[#138808]">
+                    <span className="text-base">
+                      {t('Choose or capture crop image (JPEG, PNG, WebP · Max 10 MB)', 'फसल की छवि चुनें या लें (JPEG, PNG, WebP · अधिकतम 10 MB)')}
+                    </span>
+                    <span className="mt-1 text-xs text-gray-500">
+                      {t('Lot: ', 'लॉट: ')} {currentLot.id} ({currentLot.cropName})
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      capture="environment"
+                      className="sr-only"
+                      onChange={(event) =>
+                        handleImage(event.target.files?.[0])
+                      }
                     />
-                    <figcaption className="text-sm font-bold">
-                      {t(
-                        'Local preview only. It is not uploaded or screened.',
-                        'केवल स्थानीय पूर्वावलोकन। इसे अपलोड या जाँचा नहीं गया है।'
-                      )}
-                    </figcaption>
+                  </label>
+                </div>
+
+                {imageError && (
+                  <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm font-bold text-red-800">
+                    {imageError}
+                  </p>
+                )}
+
+                {imageUrl && (
+                  <div className="space-y-3 rounded-xl border border-gray-200 p-4">
+                    <figure className="space-y-2">
+                      <img
+                        src={imageUrl}
+                        alt={t('Selected crop photo preview', 'चुनी गई फसल की फ़ोटो का पूर्वावलोकन')}
+                        className="max-h-72 w-full rounded-lg border object-contain bg-gray-50"
+                      />
+                      <figcaption className="flex flex-wrap items-center justify-between text-xs font-semibold text-gray-600">
+                        <span>
+                          {selectedFile?.name} ({((selectedFile?.size || 0) / 1024).toFixed(1)} KB)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleImage(undefined)}
+                          className="font-bold text-red-700 hover:underline"
+                        >
+                          {t('Remove photo', 'फ़ोटो हटाएँ')}
+                        </button>
+                      </figcaption>
+                    </figure>
+
                     <button
                       type="button"
-                      onClick={() => setImageUrl('')}
-                      className="min-h-11 rounded-lg border border-[#000080]/40 px-3 font-bold text-[#000080]"
+                      disabled={screeningInProgress}
+                      onClick={() => void runScreening()}
+                      className="min-h-11 w-full rounded-lg bg-[#000080] px-4 py-2 font-extrabold text-white hover:bg-[#000066] disabled:opacity-50"
                     >
-                      {t('Remove photo', 'फ़ोटो हटाएँ')}
+                      {screeningInProgress
+                        ? t('Running screening adapter…', 'छवि जाँच चल रही है…')
+                        : t('Run Crop Leaf Screening', 'फसल पत्ती जाँच चलाएँ')}
                     </button>
-                  </figure>
+                  </div>
+                )}
+
+                {screeningResult && (
+                  <div className="space-y-4 rounded-xl border-2 border-[#000080]/30 bg-[#F9FAFC] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-3">
+                      <div>
+                        <span className="text-xs font-extrabold uppercase tracking-wide text-gray-500">
+                          {t('Screening Result', 'जाँच परिणाम')}
+                        </span>
+                        <h3 className="text-lg font-black text-[#000080]">
+                          {screeningResult.outcomeCategory.replace(/_/g, ' ')}
+                        </h3>
+                      </div>
+                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900 border border-amber-300">
+                        {screeningResult.isMockOrDemo
+                          ? t('DEMO INFERENCE', 'डेमो निष्कर्ष')
+                          : t('PRODUCTION ADAPTER', 'उत्पादन एडेप्टर')}
+                      </span>
+                    </div>
+
+                    {/* Uncalibrated Inference Disclaimer */}
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+                      <strong>
+                        {t(
+                          '⚠️ Demonstration Screening Notice: ',
+                          '⚠️ प्रदर्शन जाँच सूचना: '
+                        )}
+                      </strong>
+                      {t(
+                        'Confidence scores are uncalibrated and intended for workflow demonstration. This screening does not constitute regulatory agricultural inspection.',
+                        'कॉन्फिडेंस स्कोर अनकैलिब्रेटेड हैं और केवल वर्कफ़्लो प्रदर्शन के लिए हैं। यह कोई आधिकारिक नियामक कृषि निरीक्षण नहीं है।'
+                      )}
+                    </div>
+
+                    {screeningResult.topClass && (
+                      <div className="rounded-lg border border-gray-200 bg-white p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-bold text-gray-800">
+                            {language === 'hi' && screeningResult.topClass.classNameHi
+                              ? screeningResult.topClass.classNameHi
+                              : screeningResult.topClass.className}
+                          </span>
+                          <span className="rounded bg-blue-50 px-2 py-0.5 text-xs font-extrabold text-blue-800">
+                            {Math.round(screeningResult.topClass.confidence * 100)}%{' '}
+                            {t('(Uncalibrated)', '(अनकैलिब्रेटेड)')}
+                          </span>
+                        </div>
+                        {screeningResult.topClass.scientificName && (
+                          <p className="mt-1 text-xs italic text-gray-500">
+                            {screeningResult.topClass.scientificName}
+                          </p>
+                        )}
+                        {screeningResult.runnerUp && (
+                          <div className="mt-2 border-t pt-2 text-xs text-gray-600">
+                            <span>{t('Runner-up: ', 'अन्य संभावना: ')}</span>
+                            {language === 'hi' && screeningResult.runnerUp.classNameHi
+                              ? screeningResult.runnerUp.classNameHi
+                              : screeningResult.runnerUp.className}{' '}
+                            ({Math.round(screeningResult.runnerUp.confidence * 100)}%)
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {screeningResult.abstentionReason && (
+                      <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-800">
+                        {screeningResult.abstentionReason}
+                      </div>
+                    )}
+
+                    {/* Diagnostic & Quality Notes */}
+                    <div className="grid gap-2 text-xs font-semibold sm:grid-cols-3">
+                      <div className="rounded border bg-white p-2">
+                        <span className="text-gray-500">{t('Quality Score', 'गुणवत्ता स्कोर')}:</span>{' '}
+                        {Math.round(screeningResult.explanation.visualQualityScore * 100)}%
+                      </div>
+                      <div className="rounded border bg-white p-2">
+                        <span className="text-gray-500">{t('Lighting', 'प्रकाश')}:</span>{' '}
+                        {screeningResult.explanation.lightingAdequate
+                          ? t('Adequate', 'पर्याप्त')
+                          : t('Inadequate', 'अपर्याप्त')}
+                      </div>
+                      <div className="rounded border bg-white p-2">
+                        <span className="text-gray-500">{t('Blur Check', 'धुंधलापन')}:</span>{' '}
+                        {screeningResult.explanation.blurDetected
+                          ? t('Blur Detected', 'धुंधला मिला')
+                          : t('Clear', 'स्पष्ट')}
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-gray-700">
+                      <strong>{t('Diagnostic Notes: ', 'निदान टिप्पणी: ')}</strong>
+                      {screeningResult.explanation.diagnosticNotes}
+                    </p>
+
+                    {/* Safe Agronomic Referral Banner — Strictly No Pesticides */}
+                    <div className="rounded-lg border-2 border-[#006B3C]/40 bg-[#E8F5E9] p-3 text-xs text-[#064E22]">
+                      <p className="font-extrabold text-[#006B3C]">
+                        {t(
+                          '🌱 Safe Agronomic Advisory & KVK Referral',
+                          '🌱 सुरक्षित कृषि परामर्श एवं KVK संदर्भ'
+                        )}
+                      </p>
+                      <p className="mt-1 font-semibold">
+                        {screeningResult.explanation.safeExpertReferral}
+                      </p>
+                      <p className="mt-2 text-[11px] text-[#064E22]/80">
+                        {t(
+                          'Strict Zero-Chemical Policy: KisanSetu AI does not prescribe synthetic chemical pesticides from an image alone. Please consult an authorized agronomist or your local Krishi Vigyan Kendra (KVK).',
+                          'सख्त रसायन-मुक्त नीति: किसानसेतु एआई केवल छवि से रासायनिक कीटनाशकों की सिफारिश नहीं करता। कृपया अधिकृत कृषि विस्तार अधिकारी या KVK विशेषज्ञ से परामर्श लें।'
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      <button
+                        type="button"
+                        disabled={saving || screeningSaved}
+                        onClick={() => void saveScreeningToLedger()}
+                        className="min-h-11 rounded-lg bg-[#006B3C] px-4 py-2 text-sm font-extrabold text-white hover:bg-[#005530] disabled:opacity-50"
+                      >
+                        {screeningSaved
+                          ? t('✓ Screening Saved to Ledger', '✓ जाँच लेज़र में सहेजी गई')
+                          : saving
+                          ? t('Saving…', 'सहेज रहे हैं…')
+                          : t('Save Screening to Lot Timeline', 'जाँच परिणाम को लॉट लेज़र में जोड़ें')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTab('compare')}
+                        className="min-h-11 rounded-lg border-2 border-[#000080] bg-white px-4 py-2 text-sm font-extrabold text-[#000080] hover:bg-[#E8EAF6]"
+                      >
+                        {t('Proceed to Step 2: Compare Net Returns →', 'चरण 2 पर जाएँ: शुद्ध आय की तुलना करें →')}
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -328,17 +562,28 @@ export const CropToCashPage: React.FC = () => {
                   <h2 className="text-xl font-extrabold text-[#000080]">
                     {t('Compare estimated net returns', 'अनुमानित शुद्ध आय की तुलना करें')}
                   </h2>
-                  <p className="mt-1 text-sm">
+                  <p className="mt-1 text-sm text-gray-700">
                     {t(
-                      cropToCashApiEnabled
-                        ? 'Client calculation is a preview; use the backend-confirmed result after recording. MSP is a reference, not a guaranteed offer.'
-                        : 'Fictional 50-qtl wheat fixture — MSP is a reference, not a guaranteed offer.',
-                      cropToCashApiEnabled
-                        ? 'क्लाइंट गणना केवल पूर्वावलोकन है; दर्ज करने के बाद बैकएंड से पुष्ट परिणाम देखें। MSP संदर्भ है, पक्का प्रस्ताव नहीं।'
-                        : 'काल्पनिक 50-क्विंटल गेहूँ उदाहरण — MSP संदर्भ है, पक्का प्रस्ताव नहीं।'
+                      'Evaluate MSP reference procurement, local mandi auction, and direct buyer realization after all handling, transport, and cess deductions.',
+                      'सभी हैंडलिंग, परिवहन और मंडी उपकर कटौती के बाद MSP संदर्भ खरीद, स्थानीय मंडी नीलामी और सीधे खरीदार से मिलने वाली शुद्ध राशि की तुलना करें।'
                     )}
                   </p>
                 </div>
+
+                {/* Legal Disclaimer Banner */}
+                <div className="rounded-lg border-2 border-amber-400 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+                  <strong>
+                    {t(
+                      '⚖️ Legal Notice & Reference Benchmark Disclaimer: ',
+                      '⚖️ कानूनी सूचना एवं संदर्भ बेंचमार्क अस्वीकरण: '
+                    )}
+                  </strong>
+                  {t(
+                    'The MSP rate is an illustrative economic reference benchmark based on central government announcements. It is NOT an accepted government booking, escrow guarantee, or procurement pledge.',
+                    'MSP दर केंद्र सरकार की घोषणाओं पर आधारित एक सांकेतिक संदर्भ बेंचमार्क है। यह कोई स्वीकृत सरकारी खरीद बुकिंग, एस्क्रो गारंटी या खरीद प्रतिज्ञा नहीं है।'
+                  )}
+                </div>
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="text-sm font-bold">
                     {t('Quantity (quintals)', 'मात्रा (क्विंटल)')}
@@ -347,7 +592,9 @@ export const CropToCashPage: React.FC = () => {
                       min="0.01"
                       step="0.01"
                       value={quantity}
-                      onChange={(event) => setQuantity(Number(event.target.value))}
+                      onChange={(event) =>
+                        setQuantity(Number(event.target.value))
+                      }
                       className="mt-1 min-h-11 w-full rounded-lg border-2 border-[#000080]/30 px-3"
                     />
                   </label>
@@ -375,11 +622,13 @@ export const CropToCashPage: React.FC = () => {
                     </label>
                   ))}
                 </div>
+
                 {estimate.error && (
                   <p role="alert" className="text-sm font-bold text-red-800">
                     {estimate.error}
                   </p>
                 )}
+
                 <div className="grid gap-3">
                   {quotes.map((quote) => {
                     const result = displayedEstimates.find(
@@ -427,56 +676,81 @@ export const CropToCashPage: React.FC = () => {
                     );
                   })}
                 </div>
+
                 {displayedDownside !== null && (
-                  <p className="rounded-lg border border-[#FF9933] bg-[#FFF4E8] p-3 font-bold">
-                    {t('Downside if direct sale adds an extra trip:', 'सीधी बिक्री में अतिरिक्त यात्रा होने पर:')}{' '}
-                    {formatINR(displayedDownside)}
-                  </p>
+                  <div className="rounded-lg border-2 border-[#FF9933] bg-[#FFF4E8] p-3 text-sm font-bold text-[#371A00]">
+                    <p>
+                      {t(
+                        'Downside Scenario (FCI Rejection Fallback + ₹1,000 Extra Trip):',
+                        'डाउनसाइड परिदृश्य (FCI अस्वीकृति पर सीधी बिक्री + ₹1,000 अतिरिक्त फेरा):'
+                      )}{' '}
+                      <span className="text-base font-black">
+                        {formatINR(displayedDownside)}
+                      </span>
+                    </p>
+                    <p className="mt-1 text-xs font-normal">
+                      {t(
+                        'If goods are rejected at FCI due to moisture or queue delays and re-routed to a direct buyer with an additional logistics leg.',
+                        'यदि नमी या कतार की देरी के कारण FCI में माल अस्वीकार हो जाए और अतिरिक्त परिवहन खर्च के साथ सीधे खरीदार को भेजा जाए।'
+                      )}
+                    </p>
+                  </div>
                 )}
-                <button
-                  type="button"
-                  disabled={saving || Boolean(estimate.error)}
-                  onClick={async () => {
-                    const submittedInputKey = comparisonInputKey;
-                    let comparisonRecorded = false;
-                    setSaving(true);
-                    setError('');
-                    try {
-                      const result = await adapter.recordComparison(
-                        currentLot.id,
-                        quantity,
-                        costs
-                      );
-                      if (result.lotId !== currentLot.id) {
-                        throw new Error(
-                          'The service returned a comparison for a different crop lot.'
+
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={saving || Boolean(estimate.error)}
+                    onClick={async () => {
+                      const submittedInputKey = comparisonInputKey;
+                      let comparisonRecorded = false;
+                      setSaving(true);
+                      setError('');
+                      try {
+                        const result = await adapter.recordComparison(
+                          currentLot.id,
+                          quantity,
+                          costs
                         );
+                        if (result.lotId !== currentLot.id) {
+                          throw new Error(
+                            'The service returned a comparison for a different crop lot.'
+                          );
+                        }
+                        comparisonRecorded = true;
+                        setComparisonResult({
+                          inputKey: submittedInputKey,
+                          result,
+                        });
+                        setComparisonSaved(true);
+                        setSnapshot(await adapter.getSnapshot(currentLot.id));
+                      } catch (cause) {
+                        setError(
+                          comparisonRecorded
+                            ? 'Comparison was recorded, but the lot timeline could not be refreshed. Please reload.'
+                            : cause instanceof Error
+                            ? cause.message
+                            : 'Could not record this comparison. Please retry.'
+                        );
+                      } finally {
+                        setSaving(false);
                       }
-                      comparisonRecorded = true;
-                      setComparisonResult({
-                        inputKey: submittedInputKey,
-                        result,
-                      });
-                      setComparisonSaved(true);
-                      setSnapshot(await adapter.getSnapshot(currentLot.id));
-                    } catch (cause) {
-                      setError(
-                        comparisonRecorded
-                          ? 'Comparison was recorded, but the lot timeline could not be refreshed. Please reload.'
-                          : cause instanceof Error
-                          ? cause.message
-                          : 'Could not record this comparison. Please retry.'
-                      );
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                  className="min-h-11 rounded-lg bg-[#000080] px-4 py-2 font-extrabold text-white disabled:opacity-50"
-                >
-                  {saving
-                    ? t('Saving…', 'सहेज रहे हैं…')
-                    : t('Add comparison to lot ledger', 'तुलना को लॉट लेज़र में जोड़ें')}
-                </button>
+                    }}
+                    className="min-h-11 rounded-lg bg-[#000080] px-4 py-2 font-extrabold text-white hover:bg-[#000066] disabled:opacity-50"
+                  >
+                    {saving
+                      ? t('Saving…', 'सहेज रहे हैं…')
+                      : t('Add comparison to lot ledger', 'तुलना को लॉट लेज़र में जोड़ें')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTab('complete')}
+                    className="min-h-11 rounded-lg border-2 border-[#000080] bg-white px-4 py-2 text-sm font-extrabold text-[#000080] hover:bg-[#E8EAF6]"
+                  >
+                    {t('Proceed to Step 3: Complete Sale & Procurement →', 'चरण 3 पर जाएँ: खरीद व बिक्री पूरी करें →')}
+                  </button>
+                </div>
+
                 {comparisonSaved && confirmedEstimate && (
                   <p role="status" className="text-sm font-bold text-[#006B3C]">
                     {t(
@@ -498,21 +772,64 @@ export const CropToCashPage: React.FC = () => {
                   <h2 className="text-xl font-extrabold text-[#000080]">
                     {t('Procurement and sale record', 'खरीद और बिक्री रिकॉर्ड')}
                   </h2>
-                  <p className="mt-1 text-sm">
+                  <p className="mt-1 text-sm text-gray-700">
                     {t(
-                      'Track readiness without collecting identity-document numbers or images. Centre and schedule are not verified in this demo.',
-                      'पहचान दस्तावेज़ के नंबर या छवि लिए बिना तैयारी दर्ज करें। इस डेमो में केंद्र और समय सत्यापित नहीं हैं।'
+                      'Complete pre-procurement readiness, schedule your centre visit, and record realized sale outcomes.',
+                      'खरीद-पूर्व तैयारी पूरी करें, केंद्र यात्रा निर्धारित करें और वास्तविक बिक्री परिणाम दर्ज करें।'
                     )}
                   </p>
                 </div>
+
+                {/* Privacy & Zero-PII Guarantee Banner */}
+                <div className="rounded-lg border-2 border-[#006B3C]/40 bg-[#E8F5E9] p-3 text-xs text-[#064E22]">
+                  <p className="font-extrabold">
+                    {t(
+                      '🔒 Zero-PII & Privacy Safety Guarantee',
+                      '🔒 शून्य-PII एवं गोपनीयता सुरक्षा गारंटी'
+                    )}
+                  </p>
+                  <p className="mt-1 font-semibold">
+                    {t(
+                      'Zero Aadhaar numbers, bank account numbers, passbook scans, or land-record images are collected or stored. Readiness is tracked strictly as self-certified or officer-verified boolean status flags.',
+                      'कोई आधार नंबर, बैंक खाता संख्या, पासबुक स्कैन या भूमि रिकॉर्ड छवि एकत्र या संग्रहीत नहीं की जाती है। तैयारी केवल स्व-प्रमाणित या अधिकारी-सत्यापित बूलियन स्थिति के रूप में दर्ज की जाती है।'
+                    )}
+                  </p>
+                </div>
+
+                {/* Procurement Centre Details Card */}
+                <div className="rounded-xl border-2 border-[#000080]/20 bg-[#F7F8FC] p-4 text-sm">
+                  <h3 className="font-black text-[#000080]">
+                    {t('Designated Procurement Centre Details', 'नामित खरीद केंद्र विवरण')}
+                  </h3>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 text-xs font-semibold">
+                    <div>
+                      <span className="text-gray-500">{t('Centre Name: ', 'केंद्र नाम: ')}</span>
+                      Khandwa FCI Depot / APMC Mandi Yard #3
+                    </div>
+                    <div>
+                      <span className="text-gray-500">{t('Operating Hours: ', 'संचालन समय: ')}</span>
+                      09:00 AM – 05:00 PM (Mon–Sat)
+                    </div>
+                    <div>
+                      <span className="text-gray-500">{t('Address: ', 'पता: ')}</span>
+                      Warehouse Complex, Sector 4, Khandwa, MP 450001
+                    </div>
+                    <div>
+                      <span className="text-gray-500">{t('Scheduled Appointment Slot: ', 'निर्धारित समय: ')}</span>
+                      October 22, 2026 · Morning 09:30 AM
+                    </div>
+                  </div>
+                </div>
+
+                {/* Readiness Checklist */}
                 <fieldset className="space-y-3">
-                  <legend className="font-extrabold">
-                    {t('Readiness checklist (yes / no only)', 'तैयारी सूची (केवल हाँ / नहीं)')}
+                  <legend className="font-extrabold text-[#000080]">
+                    {t('Readiness checklist (yes / no flags only)', 'तैयारी सूची (केवल हाँ / नहीं स्थिति)')}
                   </legend>
                   {snapshot.readiness.map((item) => (
                     <label
                       key={item.id}
-                      className="flex min-h-11 items-center gap-3 rounded-lg border p-3 font-semibold"
+                      className="flex min-h-11 items-center gap-3 rounded-lg border p-3 font-semibold hover:bg-gray-50"
                     >
                       <input
                         type="checkbox"
@@ -534,51 +851,61 @@ export const CropToCashPage: React.FC = () => {
                         }}
                         className="h-5 w-5 accent-[#138808]"
                       />
-                      <span>{language === 'hi' ? item.labelHi : item.labelEn}</span>
+                      <span>
+                        {language === 'hi' ? item.labelHi : item.labelEn}
+                      </span>
                     </label>
                   ))}
                 </fieldset>
-                <label className="block text-sm font-bold">
-                  {t('Procurement attempt state', 'खरीद प्रयास की स्थिति')}
-                  <select
-                    value={snapshot.procurementState}
-                    disabled={saving}
-                    onChange={(event) => {
-                      const state = event.target.value as ProcurementState;
-                      void appendEvent({
-                        type: 'PROCUREMENT',
-                        source: cropToCashApiEnabled ? 'MANUAL' : 'DEMO',
-                        verification: cropToCashApiEnabled
-                          ? 'FARMER_REPORTED'
-                          : 'DEMO ONLY — not saved to a server',
-                        summary: `Procurement attempt marked ${state}.${procurementReason ? ` Reason: ${procurementReason}` : ''}`,
-                        payload: { state, reason: procurementReason },
-                      });
-                    }}
-                    className="mt-1 min-h-11 w-full rounded-lg border-2 border-[#000080]/30 px-3"
-                  >
-                    {PROCUREMENT_STATES.map((state) => (
-                      <option key={state} value={state}>
-                        {state.replace(/_/g, ' ')}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="block text-sm font-bold">
-                  {t('Visit / rejection note (farmer reported)', 'यात्रा / अस्वीकृति टिप्पणी (किसान द्वारा बताई गई)')}
-                  <input
-                    type="text"
-                    maxLength={240}
-                    value={procurementReason}
-                    onChange={(event) => setProcurementReason(event.target.value)}
-                    className="mt-1 min-h-11 w-full rounded-lg border-2 border-[#000080]/30 px-3"
-                  />
-                </label>
+
+                {/* Visit State and Notes */}
+                <div className="space-y-3 rounded-xl border border-gray-200 p-4">
+                  <label className="block text-sm font-bold">
+                    {t('Procurement attempt state', 'खरीद प्रयास की स्थिति')}
+                    <select
+                      value={snapshot.procurementState}
+                      disabled={saving}
+                      onChange={(event) => {
+                        const state = event.target.value as ProcurementState;
+                        void appendEvent({
+                          type: 'PROCUREMENT',
+                          source: cropToCashApiEnabled ? 'MANUAL' : 'DEMO',
+                          verification: cropToCashApiEnabled
+                            ? 'FARMER_REPORTED'
+                            : 'DEMO ONLY — not saved to a server',
+                          summary: `Procurement attempt marked ${state}.${procurementReason ? ` Reason: ${procurementReason}` : ''}`,
+                          payload: { state, reason: procurementReason },
+                        });
+                      }}
+                      className="mt-1 min-h-11 w-full rounded-lg border-2 border-[#000080]/30 px-3"
+                    >
+                      {PROCUREMENT_STATES.map((state) => (
+                        <option key={state} value={state}>
+                          {state.replace(/_/g, ' ')}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm font-bold">
+                    {t('Visit / rejection note (farmer reported)', 'यात्रा / अस्वीकृति टिप्पणी (किसान द्वारा बताई गई)')}
+                    <input
+                      type="text"
+                      maxLength={240}
+                      value={procurementReason}
+                      onChange={(event) => setProcurementReason(event.target.value)}
+                      placeholder={t('e.g., FAQ moisture 11.8% verified or re-routed', 'उदा. नमी 11.8% सत्यापित या पुनः निर्देशित')}
+                      className="mt-1 min-h-11 w-full rounded-lg border-2 border-[#000080]/30 px-3"
+                    />
+                  </label>
+                </div>
+
+                {/* Sale Record Form */}
                 <form
                   className="space-y-3 rounded-xl border-2 border-[#000080]/20 p-4"
                   onSubmit={async (event) => {
                     event.preventDefault();
-                    const actualNet = Math.round(quantity * salePrice) - actualCosts;
+                    const actualNet =
+                      Math.round(quantity * salePrice) - actualCosts;
                     const success = await appendEvent({
                       type: 'SALE',
                       source: cropToCashApiEnabled ? 'MANUAL' : 'DEMO',
@@ -598,6 +925,7 @@ export const CropToCashPage: React.FC = () => {
                     });
                     if (success) {
                       setSaleSaved(true);
+                      setHasSubmittedSale(true);
                       setSaleSummary(
                         `Actual net ${formatINR(actualNet)}; ${
                           actualNet - (selectedEstimate?.net || 0) >= 0
@@ -610,9 +938,16 @@ export const CropToCashPage: React.FC = () => {
                     }
                   }}
                 >
-                  <h3 className="font-extrabold">
-                    {t('Record farmer-reported sale', 'किसान द्वारा बताई बिक्री दर्ज करें')}
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-extrabold text-[#000080]">
+                      {t('Record farmer-reported sale', 'किसान द्वारा बताई बिक्री दर्ज करें')}
+                    </h3>
+                    {hasSubmittedSale && (
+                      <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">
+                        {t('Sale already logged', 'बिक्री पहले ही दर्ज है')}
+                      </span>
+                    )}
+                  </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="text-sm font-bold">
                       {t('Agreed price (₹/qtl)', 'तय भाव (₹/क्विंटल)')}
@@ -658,10 +993,17 @@ export const CropToCashPage: React.FC = () => {
                   </div>
                   <button
                     type="submit"
-                    disabled={saving || quantity <= 0 || salePrice < 0 || actualCosts < 0}
-                    className="min-h-11 rounded-lg bg-[#138808] px-4 py-2 font-extrabold text-white disabled:opacity-50"
+                    disabled={
+                      saving ||
+                      quantity <= 0 ||
+                      salePrice < 0 ||
+                      actualCosts < 0
+                    }
+                    className="min-h-11 rounded-lg bg-[#138808] px-4 py-2 font-extrabold text-white hover:bg-[#0f6b06] disabled:opacity-50"
                   >
-                    {saving ? t('Saving…', 'सहेज रहे हैं…') : t('Add sale event', 'बिक्री घटना जोड़ें')}
+                    {saving
+                      ? t('Saving…', 'सहेज रहे हैं…')
+                      : t('Add sale event', 'बिक्री घटना जोड़ें')}
                   </button>
                   {saleSaved && (
                     <p role="status" className="text-sm font-bold text-[#006B3C]">
@@ -687,13 +1029,17 @@ export const CropToCashPage: React.FC = () => {
             <p className="mt-1 break-all text-xs font-bold">{snapshot.lotId}</p>
             <ol className="mt-4 space-y-3">
               {[...snapshot.events].reverse().map((event) => (
-                <li key={event.eventId} className="border-l-4 border-[#138808] pl-3">
-                  <p className="text-xs font-extrabold uppercase">
+                <li
+                  key={event.eventId}
+                  className="border-l-4 border-[#138808] pl-3"
+                >
+                  <p className="text-xs font-extrabold uppercase text-gray-800">
                     {event.type} · {event.source}
                   </p>
-                  <p className="mt-1 text-sm">{event.summary}</p>
+                  <p className="mt-1 text-sm font-medium">{event.summary}</p>
                   <p className="mt-1 text-xs text-black/75">
-                    {new Date(event.occurredAt).toLocaleString()} · {event.verification}
+                    {new Date(event.occurredAt).toLocaleString()} ·{' '}
+                    {event.verification}
                   </p>
                 </li>
               ))}

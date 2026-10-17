@@ -78,3 +78,46 @@ export interface CropToCashSnapshot {
   readiness: CropReadinessItem[];
   procurementState: ProcurementState;
 }
+
+export type ScreeningOutcomeCategory =
+  | 'CLEAR_HEALTHY'
+  | 'DISEASE_DETECTED'
+  | 'IMAGE_QUALITY_REJECTED'
+  | 'UNSUPPORTED_CROP'
+  | 'ABSTENTION_UNCERTAIN';
+
+export interface ScreeningPrediction {
+  className: string;
+  classNameHi?: string;
+  confidence: number;
+  scientificName?: string;
+}
+
+export interface CropScreeningResult {
+  screeningId: string;
+  lotId?: string;
+  modelName: string;
+  modelVersion: string;
+  isMockOrDemo: boolean;
+  timestamp: string;
+  outcomeCategory: ScreeningOutcomeCategory;
+  topClass: ScreeningPrediction | null;
+  runnerUp: ScreeningPrediction | null;
+  calibratedConfidence: boolean;
+  abstentionReason?: string;
+  explanation: {
+    visualQualityScore: number;
+    lightingAdequate: boolean;
+    blurDetected: boolean;
+    diagnosticNotes: string;
+    safeExpertReferral: string;
+  };
+}
+
+export interface ScreeningRequestPayload {
+  imageFormat: 'jpeg' | 'png' | 'webp';
+  imageSizeBytes: number;
+  cropDeclared?: string;
+  imageBase64?: string;
+}
+
