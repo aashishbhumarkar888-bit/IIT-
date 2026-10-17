@@ -3,13 +3,30 @@ import dotenv from 'dotenv';
 import express, { NextFunction, Request, Response } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+import {
+  createSignedToken as createStatelessSignedToken,
+  verifySignedToken as verifyStatelessSignedToken,
+} from './serverSession';
 
 dotenv.config();
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  throw new Error('PORT must be a valid TCP port between 1 and 65535.');
+}
+const configuredSessionSecret = process.env.KISAN_SESSION_SECRET;
+if (
+  process.env.NODE_ENV === 'production' &&
+  (!configuredSessionSecret ||
+    configuredSessionSecret.length < 32 ||
+    configuredSessionSecret.includes('REPLACE_WITH'))
+) {
+  throw new Error(
+    'KISAN_SESSION_SECRET must be configured with at least 32 characters in production.'
+  );
+}
 const SESSION_SECRET =
-  process.env.KISAN_SESSION_SECRET ||
-  crypto.randomBytes(32).toString('hex');
+  configuredSessionSecret || crypto.randomBytes(32).toString('hex');
 
 export type ServerUserRole = 'farmer' | 'agent' | 'buyer' | 'admin';
 export type ServerOnboardingStatus = 'INCOMPLETE' | 'COMPLETED' | 'SKIPPED';
@@ -335,15 +352,6 @@ seedUser({
   uidLabel: 'REGISTRAR-01',
 });
 
-interface SessionData {
-  tokenId: string;
-  email: string;
-  issuedAt: number;
-  expiresAt: number;
-}
-
-const activeSessions = new Map<string, SessionData>();
-
 const auditLogs: AuditLogEntry[] = [
   {
     id: 'AUD-1001',
@@ -384,52 +392,13 @@ let serverLotStatusOverrides: Record<
 > = {};
 
 function createSignedToken(email: string): string {
-  const tokenId = crypto.randomBytes(24).toString('hex');
-  const now = Date.now();
-  const expiresAt = now + 1000 * 60 * 60 * 12;
-  activeSessions.set(tokenId, { tokenId, email, issuedAt: now, expiresAt });
-
-  const payload = `${tokenId}.${email}.${expiresAt}`;
-  const sig = crypto
-    .createHmac('sha256', SESSION_SECRET)
-    .update(payload)
-    .digest('hex');
-  return `${Buffer.from(payload).toString('base64url')}.${sig}`;
+  return createStatelessSignedToken(email, SESSION_SECRET);
 }
 
 function verifySignedToken(rawToken?: string): ServerUserRecord | null {
-  if (!rawToken) return null;
-  const parts = rawToken.split('.');
-  if (parts.length !== 2) return null;
-  const [b64Payload, providedSig] = parts;
-  let decoded = '';
-  try {
-    decoded = Buffer.from(b64Payload, 'base64url').toString('utf8');
-  } catch {
-    return null;
-  }
-  const expectedSig = crypto
-    .createHmac('sha256', SESSION_SECRET)
-    .update(decoded)
-    .digest('hex');
-
-  if (providedSig !== expectedSig) return null;
-  const identityEnd = decoded.lastIndexOf('.');
-  const identitySeparator = decoded.indexOf('.');
-  if (identitySeparator <= 0 || identityEnd <= identitySeparator) return null;
-
-  const tokenId = decoded.slice(0, identitySeparator);
-  const email = decoded.slice(identitySeparator + 1, identityEnd);
-  const expiresStr = decoded.slice(identityEnd + 1);
-  if (!email || !/^\d+$/.test(expiresStr)) return null;
-
-  const session = activeSessions.get(tokenId);
-  if (!session || session.email !== email) return null;
-  if (Date.now() > Number(expiresStr)) {
-    activeSessions.delete(tokenId);
-    return null;
-  }
-  const user = usersMap.get(email.toLowerCase());
+  const claims = verifyStatelessSignedToken(rawToken, SESSION_SECRET);
+  if (!claims) return null;
+  const user = usersMap.get(claims.email.toLowerCase());
   if (!user || !user.active) return null;
   return user;
 }
@@ -1128,25 +1097,16 @@ async function startServer() {
   // 7. Logout
   app.post('/api/auth/logout', (req: Request, res: Response) => {
     const rawToken = extractToken(req);
-    if (rawToken) {
-      const parts = rawToken.split('.');
-      if (parts.length === 2) {
-        try {
-          const decoded = Buffer.from(parts[0], 'base64url').toString('utf8');
-          const [tokenId, email] = decoded.split('.');
-          activeSessions.delete(tokenId);
-          recordAudit(
-            email || 'user',
-            'session',
-            'USER_LOGOUT',
-            'Session Terminated',
-            'Token invalidated on server.',
-            'SUCCESS'
-          );
-        } catch {
-          // Ignore
-        }
-      }
+    const claims = verifyStatelessSignedToken(rawToken, SESSION_SECRET);
+    if (claims) {
+      recordAudit(
+        claims.email,
+        'session',
+        'USER_LOGOUT',
+        'Client Session Cleared',
+        'Client cleared its token; any copied token expires automatically.',
+        'SUCCESS'
+      );
     }
     res.json({ success: true });
   });
@@ -1187,7 +1147,7 @@ async function startServer() {
       lotStatusOverrides: serverLotStatusOverrides,
       systemStatus: {
         authProvider:
-          'Firebase Auth (Google Sign-In) + Express Scrypt Session Engine',
+          'Firebase Auth (Google Sign-In) + Stateless HMAC Server Tokens',
         agristackNode: 'MP-KHD-0402 (Connected Sample)',
         weighbridgeSerial: 'RS232 Terminal #104 (Simulated)',
         escrowGateway: 'Review-Only Demonstration Mode (No Live Bank Keys)',

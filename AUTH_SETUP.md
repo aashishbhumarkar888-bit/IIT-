@@ -21,6 +21,7 @@ Kisan-SPO distinguishes between three authenticated account states:
 ## 2. Authentication Methods
 
 - **Primary Production Auth**: **Google Sign-In with Firebase Authentication** (`signInWithPopup`) backed by **Cloud Firestore** (`/users/{userId}`, isolated PII vault `/users/{userId}/private/info`, `/cropLots/{lotId}`, `/auditLogs/{logId}`).
+- **Server API tokens**: Signed tokens are stateless and expire 15 minutes after issue. Set `KISAN_SESSION_SECRET` to the same random value (at least 32 characters) on every production instance. Logout clears the browser's token and signs out of Firebase; a copied server token cannot be revoked immediately and remains valid only until its expiry.
 - **Local Development / Evaluation Accounts**: When running in local development mode (`devDemoMode: true`), quick-fill buttons on `/login` allow testing all three experiences:
   - **Demo Farmer (Experience B)**: `ramesh.patel@kisan-spo.in`
   - **Returning Farmer (Experience C)**: `suresh.kumar@kisan-spo.in` (has 1 saved personal Soybean lot `#KS-0124`)

@@ -376,7 +376,7 @@ export const AdminDashboardPage: React.FC = () => {
 
           <button
             type="button"
-            onClick={logout}
+            onClick={() => logout()}
             className="w-full py-2 rounded-lg bg-[#FF9933] text-black font-extrabold text-xs flex items-center justify-center gap-1.5"
           >
             <span className="material-symbols-outlined text-[16px]">

@@ -23,6 +23,7 @@ import {
   updateFirestoreUserPreferences,
 } from '../firebase';
 import { calculateArbitrage } from '../services/kisanService';
+import { getServerSessionExpiry } from '../sessionToken';
 import {
   ArbitrageCalculationInput,
   ArbitrageCalculationResult,
@@ -161,7 +162,7 @@ interface KisanContextValue {
   ) => Promise<{ ok: boolean; lot?: CropLot; error?: string }>;
   resetDemoDataset: () => Promise<void>;
   verifyEmailWithServer: () => Promise<void>;
-  logout: () => Promise<void>;
+  logout: (sessionExpired?: boolean) => Promise<void>;
 
   // Dashboard Mode (Personal Assistant vs Operations Desk)
   workspaceViewMode: 'PERSONAL' | 'OPERATIONS_DESK';
@@ -983,7 +984,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [token, showToast]);
 
-  const logout = useCallback(async () => {
+  const logout = useCallback(async (sessionExpired = false) => {
     cleanupAllFirestoreSubscriptions();
     try {
       await signOutFromFirebase();
@@ -1012,8 +1013,27 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     setProcessorPivotApproved(false);
     setAuthStatus('UNAUTHENTICATED');
     syncHistory('/login');
-    showToast('Signed out securely from Firebase & Kisan-SPO.', 'blue');
+    showToast(
+      sessionExpired
+        ? 'Your server session expired. Please sign in again.'
+        : 'Signed out. Any copied server token expires within 15 minutes.',
+      sessionExpired ? 'saffron' : 'blue'
+    );
   }, [token, syncHistory, showToast]);
+
+  useEffect(() => {
+    if (!token) return;
+    const expiresAt = getServerSessionExpiry(token);
+    if (expiresAt === null || expiresAt <= Date.now()) {
+      void logout(true);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void logout(true);
+    }, expiresAt - Date.now());
+    return () => window.clearTimeout(timer);
+  }, [token, logout]);
 
   const setRole = useCallback(
     (nextRole: UserRole) => {
