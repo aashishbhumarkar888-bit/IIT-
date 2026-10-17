@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useKisan } from '../context/KisanContext';
 import { KISAN_LOGO_URL } from '../data/kisanData';
+import { useAuth } from '../hooks/useAuth';
 import { Language, UserRole } from '../types/kisan';
 
 interface OnboardingProgressProps {
@@ -104,14 +105,13 @@ export const RoleSelectionCard: React.FC<RoleSelectionCardProps> = ({
 
 export const OnboardingWizard: React.FC = () => {
   const {
-    user,
     language,
     setLanguage,
-    updateUserProfile,
     navigate,
     setAddCropModalOpen,
     showToast,
   } = useKisan();
+  const { user, updateUserProfile } = useAuth();
 
   const [step, setStep] = useState<number>(() =>
     user?.onboardingStep && user.onboardingStep >= 1 && user.onboardingStep <= 4
@@ -129,9 +129,7 @@ export const OnboardingWizard: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<UserRole>(
     user?.role === 'agent' || user?.role === 'buyer' ? user.role : 'farmer'
   );
-  const [stateName, setStateName] = useState<string>(
-    user?.state || 'Madhya Pradesh'
-  );
+  const [stateName, setStateName] = useState<string>(user?.state || '');
   const [districtName, setDistrictName] = useState<string>(
     user?.district || ''
   );
@@ -139,6 +137,9 @@ export const OnboardingWizard: React.FC = () => {
 
   const [saving, setSaving] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [lastRetryAction, setLastRetryAction] = useState<
+    (() => Promise<void>) | null
+  >(null);
   const [logoError, setLogoError] = useState<boolean>(false);
 
   useEffect(() => {
@@ -147,11 +148,12 @@ export const OnboardingWizard: React.FC = () => {
     if (user.phoneNumber && !phoneNumber) setPhoneNumber(user.phoneNumber);
     if (user.village && !villageName) setVillageName(user.village);
     if (user.district && !districtName) setDistrictName(user.district);
-    if (user.state) setStateName(user.state);
-  }, [user, fullName, phoneNumber, villageName, districtName]);
+    if (user.state && !stateName) setStateName(user.state);
+  }, [user, fullName, phoneNumber, villageName, districtName, stateName]);
 
   const handleSaveStep1 = async (skipOptional: boolean) => {
     setErrorMsg('');
+    setLastRetryAction(() => () => handleSaveStep1(skipOptional));
     const cleanName = fullName.trim() || user?.name || 'Kisan-SPO Member';
     setSaving(true);
     setLanguage(preferredLang);
@@ -161,35 +163,37 @@ export const OnboardingWizard: React.FC = () => {
       phoneNumber: skipOptional ? '' : phoneNumber.trim(),
       onboardingStatus: 'INCOMPLETE',
       onboardingStep: 2,
-      profileCompletion: 50,
     });
     setSaving(false);
     if (!res.ok) {
       setErrorMsg(res.error || 'Could not save Step 1. Please retry.');
       return;
     }
+    setLastRetryAction(null);
     setStep(2);
   };
 
   const handleSaveStep2 = async () => {
     setErrorMsg('');
+    setLastRetryAction(() => () => handleSaveStep2());
     setSaving(true);
     const res = await updateUserProfile({
       role: selectedRole,
       onboardingStatus: 'INCOMPLETE',
       onboardingStep: 3,
-      profileCompletion: 75,
     });
     setSaving(false);
     if (!res.ok) {
       setErrorMsg(res.error || 'Could not save workspace preference.');
       return;
     }
+    setLastRetryAction(null);
     setStep(3);
   };
 
   const handleSaveStep3 = async (skipLocation: boolean) => {
     setErrorMsg('');
+    setLastRetryAction(() => () => handleSaveStep3(skipLocation));
     setSaving(true);
     const res = await updateUserProfile({
       state: skipLocation ? '' : stateName.trim(),
@@ -197,13 +201,13 @@ export const OnboardingWizard: React.FC = () => {
       village: skipLocation ? '' : villageName.trim(),
       onboardingStatus: 'INCOMPLETE',
       onboardingStep: 4,
-      profileCompletion: skipLocation ? 85 : 95,
     });
     setSaving(false);
     if (!res.ok) {
       setErrorMsg(res.error || 'Could not save location details.');
       return;
     }
+    setLastRetryAction(null);
     setStep(4);
   };
 
@@ -217,10 +221,10 @@ export const OnboardingWizard: React.FC = () => {
     openAddCropAfter: boolean = false
   ) => {
     setErrorMsg('');
-    setSaving(true);
-    const hasLocation = Boolean(
-      villageName.trim() || districtName.trim() || stateName.trim()
+    setLastRetryAction(
+      () => () => handleCompleteOnboarding(targetRoute, openAddCropAfter)
     );
+    setSaving(true);
     const res = await updateUserProfile({
       name: fullName.trim() || user?.name || 'Kisan-SPO Member',
       preferredLanguage: preferredLang,
@@ -230,7 +234,6 @@ export const OnboardingWizard: React.FC = () => {
       village: villageName.trim(),
       onboardingStatus: 'COMPLETED',
       onboardingStep: 4,
-      profileCompletion: hasLocation ? 100 : 85,
     });
     setSaving(false);
     if (!res.ok) {
@@ -239,6 +242,7 @@ export const OnboardingWizard: React.FC = () => {
       );
       return;
     }
+    setLastRetryAction(null);
     showToast(
       `Welcome, ${fullName.trim() || user?.name || 'Friend'}! Your personal workspace is ready.`,
       'green'
@@ -322,12 +326,24 @@ export const OnboardingWizard: React.FC = () => {
           {errorMsg && (
             <div
               role="alert"
-              className="mt-4 p-3 rounded-lg bg-[#FF9933] text-black border-2 border-black text-xs font-extrabold flex items-start gap-2"
+              className="mt-4 p-3 rounded-lg bg-[#FF9933] text-black border-2 border-black text-xs font-extrabold flex flex-wrap items-center justify-between gap-2"
             >
-              <span className="material-symbols-outlined text-[18px] shrink-0">
-                warning
-              </span>
-              <span>{errorMsg}</span>
+              <div className="flex items-start gap-2">
+                <span className="material-symbols-outlined text-[18px] shrink-0">
+                  warning
+                </span>
+                <span>{errorMsg}</span>
+              </div>
+              {lastRetryAction && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => lastRetryAction()}
+                  className="px-3 py-1 rounded bg-white text-[#000080] border border-black text-[11px] font-extrabold"
+                >
+                  Retry Save
+                </button>
+              )}
             </div>
           )}
 
@@ -471,7 +487,7 @@ export const OnboardingWizard: React.FC = () => {
                   selected={selectedRole === 'farmer'}
                   titleEn="Farmer / Family Proxy"
                   titleHi="किसान / पारिवारिक प्रतिनिधि"
-                  description="Manage crops, compare buyer offers, track pickups, and follow payments."
+                  description="Manage crops, compare buyer offers, and track procurement."
                   icon="eco"
                   onSelect={setSelectedRole}
                 />
@@ -480,7 +496,7 @@ export const OnboardingWizard: React.FC = () => {
                   selected={selectedRole === 'agent'}
                   titleEn="Village Agent / Arhtiya Partner"
                   titleHi="ग्रामीण एजेंट / आढ़तिया साथी"
-                  description="Coordinate farmer onboarding, pickup schedules, village pooling, and weighbridge operations."
+                  description="Coordinate farmer onboarding, village pooling, and pickups."
                   icon="local_shipping"
                   onSelect={setSelectedRole}
                 />
@@ -489,7 +505,7 @@ export const OnboardingWizard: React.FC = () => {
                   selected={selectedRole === 'buyer'}
                   titleEn="Institutional Buyer"
                   titleHi="संस्थागत खरीदार"
-                  description="Discover crop lots, review quality evidence, compare bids, and coordinate procurement."
+                  description="Review crop lots, quality evidence, and procurement offers."
                   icon="warehouse"
                   onSelect={setSelectedRole}
                 />
@@ -744,16 +760,16 @@ export const OnboardingWizard: React.FC = () => {
                       type="button"
                       disabled={saving}
                       onClick={() =>
-                        handleCompleteOnboarding('/market-comparison', false)
+                        handleCompleteOnboarding('/advisory', false)
                       }
                       className="p-3 rounded-xl bg-white hover:bg-[#E8EAF6] border border-[#000080]/30 text-left flex items-center justify-between gap-3 transition-colors"
                     >
                       <div className="flex items-center gap-2.5">
                         <span className="material-symbols-outlined text-[#000080] text-[20px]">
-                          calculate
+                          potted_plant
                         </span>
                         <span className="text-xs font-extrabold text-[#000080]">
-                          Explore Buyer Offers
+                          Explore Crop Advisory
                         </span>
                       </div>
                       <span className="material-symbols-outlined text-[#000080] text-[18px]">
@@ -765,16 +781,16 @@ export const OnboardingWizard: React.FC = () => {
                       type="button"
                       disabled={saving}
                       onClick={() =>
-                        handleCompleteOnboarding('/crop-passport', false)
+                        handleCompleteOnboarding('/market-comparison', false)
                       }
                       className="p-3 rounded-xl bg-white hover:bg-[#E8EAF6] border border-[#000080]/30 text-left flex items-center justify-between gap-3 transition-colors"
                     >
                       <div className="flex items-center gap-2.5">
                         <span className="material-symbols-outlined text-[#000080] text-[20px]">
-                          badge
+                          calculate
                         </span>
                         <span className="text-xs font-extrabold text-[#000080]">
-                          Learn How Crop Passports Work
+                          Learn About Buyer Offers
                         </span>
                       </div>
                       <span className="material-symbols-outlined text-[#000080] text-[18px]">
@@ -820,7 +836,7 @@ export const OnboardingWizard: React.FC = () => {
                           local_shipping
                         </span>
                         <span className="text-xs font-extrabold text-[#000080]">
-                          View Pickup Scheduling
+                          Open Pickup Scheduling
                         </span>
                       </div>
                       <span className="material-symbols-outlined text-[#000080] text-[18px]">
@@ -841,7 +857,7 @@ export const OnboardingWizard: React.FC = () => {
                           scale
                         </span>
                         <span className="text-xs font-extrabold text-[#000080]">
-                          Learn About Weighbridge Workflows
+                          Learn About Gate-Pass Operations
                         </span>
                       </div>
                       <span className="material-symbols-outlined text-[#000080] text-[18px]">
@@ -866,7 +882,7 @@ export const OnboardingWizard: React.FC = () => {
                           inventory_2
                         </span>
                         <span className="text-xs font-extrabold text-[#000080]">
-                          Explore Available Crop Lots
+                          Explore Available Lots
                         </span>
                       </div>
                       <span className="material-symbols-outlined text-[#138808] text-[18px]">
@@ -887,7 +903,7 @@ export const OnboardingWizard: React.FC = () => {
                           verified
                         </span>
                         <span className="text-xs font-extrabold text-[#000080]">
-                          Learn About Quality Verification
+                          Review Verification Workflows
                         </span>
                       </div>
                       <span className="material-symbols-outlined text-[#000080] text-[18px]">
@@ -908,7 +924,7 @@ export const OnboardingWizard: React.FC = () => {
                           gavel
                         </span>
                         <span className="text-xs font-extrabold text-[#000080]">
-                          View Procurement Workflows
+                          Learn About Procurement
                         </span>
                       </div>
                       <span className="material-symbols-outlined text-[#000080] text-[18px]">

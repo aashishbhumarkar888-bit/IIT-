@@ -1,21 +1,26 @@
 import React, { useState } from 'react';
 import { useKisan } from '../context/KisanContext';
 import { KISAN_LOGO_URL } from '../data/kisanData';
+import { useAuth } from '../hooks/useAuth';
 import { UserRole } from '../types/kisan';
 
 export const AuthPage: React.FC = () => {
   const {
     route,
     navigate,
+    language,
+    setLanguage,
+    t,
+  } = useKisan();
+
+  const {
     loginWithGoogle,
     loginWithServer,
     registerWithServer,
+    requestPasswordReset,
     devDemoMode,
-    language,
-    setLanguage,
-    setAdminDialogOpen,
     authSuccessTransition,
-  } = useKisan();
+  } = useAuth();
 
   const mode: 'login' | 'signup' | 'forgot' =
     route === '/signup'
@@ -56,25 +61,15 @@ export const AuthPage: React.FC = () => {
 
     if (mode === 'forgot') {
       setSubmitting(true);
-      try {
-        const res = await fetch('/api/auth/forgot-password', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: trimmedEmail }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setErrorMsg(data.error || 'Could not process recovery request.');
-        } else {
-          setResetConfirmation(
-            data.message ||
-              'Password recovery instructions have been sent to your email address.'
-          );
-        }
-      } catch {
-        setErrorMsg('Network error while requesting password reset.');
-      } finally {
-        setSubmitting(false);
+      const res = await requestPasswordReset(trimmedEmail);
+      setSubmitting(false);
+      if (!res.ok) {
+        setErrorMsg(res.error || 'Could not process recovery request.');
+      } else {
+        setResetConfirmation(
+          res.message ||
+            'Password recovery instructions have been sent to your email address.'
+        );
       }
       return;
     }
@@ -172,12 +167,14 @@ export const AuthPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <div
               role="group"
-              aria-label="Language switcher"
+              aria-label={t('Language switcher', 'भाषा चयनकर्ता')}
               className="flex items-center bg-[#E8EAF6] p-0.5 rounded-lg border border-[#000080]/20"
             >
               <button
                 type="button"
                 onClick={() => setLanguage('en')}
+                aria-pressed={language === 'en'}
+                aria-label={t('Switch language to English', 'अंग्रेज़ी भाषा चुनें')}
                 className={`px-2.5 py-1 rounded text-xs font-extrabold min-h-[34px] transition-colors ${
                   language === 'en'
                     ? 'bg-[#000080] text-white'
@@ -189,6 +186,8 @@ export const AuthPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setLanguage('hi')}
+                aria-pressed={language === 'hi'}
+                aria-label={t('Switch language to Hindi', 'हिंदी भाषा चुनें')}
                 className={`px-2.5 py-1 rounded text-xs font-extrabold font-hindi min-h-[34px] transition-colors ${
                   language === 'hi'
                     ? 'bg-[#000080] text-white'
@@ -198,18 +197,6 @@ export const AuthPage: React.FC = () => {
                 हिंदी
               </button>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setAdminDialogOpen(true)}
-              title="Administrator Access (Ctrl + Shift + A)"
-              className="px-3 py-1.5 rounded-lg bg-white hover:bg-[#E8EAF6] text-[#000080] border border-[#000080]/30 text-xs font-extrabold flex items-center gap-1 min-h-[36px]"
-            >
-              <span className="material-symbols-outlined text-[16px]">
-                admin_panel_settings
-              </span>
-              <span className="hidden sm:inline">Admin</span>
-            </button>
           </div>
         </div>
       </header>
@@ -686,44 +673,73 @@ export const AuthPage: React.FC = () => {
                 )}
               </div>
 
-              {/* Clearly Labeled Development Mode Demo Account Quick-Fill */}
+              {/* Clearly Labeled Development Mode Demo & Isolation Test Accounts */}
               {devDemoMode && (
-                <div className="mt-4 p-3 rounded-xl bg-[#E8EAF6] border border-[#000080]/30">
-                  <div className="flex items-center justify-between mb-1.5">
+                <div className="mt-4 p-3 rounded-xl bg-[#E8EAF6] border border-[#000080]/30 space-y-2">
+                  <div className="flex items-center justify-between">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#000080]">
-                      Dev Mode Demo Accounts (Server-Verified)
+                      Dev Mode Test Accounts (3 Experiences)
                     </span>
                     <span className="px-1.5 py-0.5 rounded bg-white text-[#000080] text-[9px] font-extrabold border border-[#000080]/20">
-                      LOCAL DEMO ONLY
+                      DEV / DEMO ONLY
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        fillDemoAccount('anita.verma@kisan-spo.in')
+                      }
+                      className="p-2 rounded bg-white hover:bg-[#138808] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-left transition-colors"
+                    >
+                      <span className="block text-[#138808] group-hover:text-white uppercase text-[9px]">
+                        Exp A • New User
+                      </span>
+                      <span>Anita Verma (Fresh)</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() =>
                         fillDemoAccount('ramesh.patel@kisan-spo.in')
                       }
-                      className="p-1.5 rounded bg-white hover:bg-[#138808] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-center transition-colors"
+                      className="p-2 rounded bg-[#FFDCC2]/70 hover:bg-[#138808] hover:text-white text-black border border-[#FF9933] text-[11px] font-extrabold text-left transition-colors"
                     >
-                      Farmer
+                      <span className="block text-[#371A00] uppercase text-[9px]">
+                        Exp B • Demo Farmer
+                      </span>
+                      <span>Ramesh Patel (Sample)</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        fillDemoAccount('suresh.kumar@kisan-spo.in')
+                      }
+                      className="p-2 rounded bg-white hover:bg-[#138808] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-left transition-colors"
+                    >
+                      <span className="block text-[#000080] uppercase text-[9px]">
+                        Exp C • Returning
+                      </span>
+                      <span>Suresh Kumar (1 Lot)</span>
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                     <button
                       type="button"
                       onClick={() =>
                         fillDemoAccount('agent.khandwa@kisan-spo.in')
                       }
-                      className="p-1.5 rounded bg-white hover:bg-[#138808] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-center transition-colors"
+                      className="p-1.5 rounded bg-white hover:bg-[#000080] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-center transition-colors"
                     >
-                      Village Agent
+                      Village Agent (Dr. Raman)
                     </button>
                     <button
                       type="button"
                       onClick={() =>
                         fillDemoAccount('procurement@itc-agri.in')
                       }
-                      className="p-1.5 rounded bg-white hover:bg-[#138808] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-center transition-colors"
+                      className="p-1.5 rounded bg-white hover:bg-[#000080] hover:text-white text-black border border-[#000080]/30 text-[11px] font-extrabold text-center transition-colors"
                     >
-                      Buyer (ITC)
+                      Institutional Buyer (ITC)
                     </button>
                   </div>
                 </div>
@@ -737,10 +753,16 @@ export const AuthPage: React.FC = () => {
       <footer className="w-full border-t border-[#000080]/15 py-3 px-4 sm:px-8 text-center sm:text-left">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-black font-semibold">
           <span>
-            © 2026 Kisan-SPO • Smart Procurement &amp; Lifecycle Orchestration
+            {t(
+              '© 2026 Kisan-SPO • Smart Procurement & Lifecycle Orchestration',
+              '© 2026 किसान-एसपीओ • स्मार्ट खरीद और फसल जीवनचक्र प्रबंधन'
+            )}
           </span>
-          <span className="font-tabular text-[11px] text-[#000080] font-bold">
-            Admin Shortcut: Ctrl + Shift + A (Cmd + Shift + A on macOS)
+          <span className="font-tabular text-[11px] text-[#006B3C] font-bold">
+            {t(
+              '256-Bit SSL • Digital India AgriStack Verified',
+              '256-बिट सुरक्षित • डिजिटल इंडिया एग्रीस्टैक सत्यापित'
+            )}
           </span>
         </div>
       </footer>

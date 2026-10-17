@@ -1,4 +1,8 @@
-import { Request, Response } from 'express';
+import {
+  CropLedgerEvent,
+  CropReadinessItem,
+  ProcurementState,
+} from '../types/cropToCash';
 
 // ============================================================================
 // Types & Interfaces
@@ -165,6 +169,27 @@ export interface CropPassportHistoryEvent {
   details: Record<string, unknown>;
 }
 
+export const DEFAULT_CROP_READINESS: CropReadinessItem[] = [
+  {
+    id: 'bank-details',
+    labelEn: 'Bank details ready (readiness only)',
+    labelHi: 'बैंक विवरण तैयार (केवल तैयारी)',
+    ready: false,
+  },
+  {
+    id: 'registration',
+    labelEn: 'Farmer registration details ready',
+    labelHi: 'किसान पंजीकरण विवरण तैयार',
+    ready: false,
+  },
+  {
+    id: 'produce',
+    labelEn: 'Produce quantity and grade noted',
+    labelHi: 'फसल की मात्रा और ग्रेड दर्ज',
+    ready: false,
+  },
+];
+
 export interface ExtendedCropLotRecord {
   id: string;
   ownerEmail: string;
@@ -182,6 +207,9 @@ export interface ExtendedCropLotRecord {
   procurementAttempts: ProcurementAttempt[];
   saleRecord?: SaleRecord;
   historyEvents: CropPassportHistoryEvent[];
+  readiness: CropReadinessItem[];
+  procurementState: ProcurementState;
+  ledgerEvents: CropLedgerEvent[];
   createdAt: string;
   updatedAt: string;
 }
@@ -430,7 +458,65 @@ export class CropToCashService {
 // In-Memory storage of Extended Crop Lots keyed by lot ID
 const extendedCropLots = new Map<string, ExtendedCropLotRecord>();
 
-export function getExtendedLot(lotId: string): ExtendedCropLotRecord | undefined {
+function seedDefaultDemoLot(
+  id: string,
+  cropName: string,
+  variety: string,
+  quantityQuintals: number
+): void {
+  const now = '2026-10-18T00:00:00.000Z';
+  extendedCropLots.set(id, {
+    id,
+    ownerEmail: 'farmer@kisanspo.in',
+    ownerId: 'USR-FARMER-01',
+    farmerName: 'Rameshwar Patidar (Demo Farmer)',
+    cropName,
+    variety,
+    grade: 'FAQ Grade A',
+    quantityQuintals,
+    harvestDate: 'Oct 2026',
+    surveyNumber: 'Survey #104/2, Khandwa',
+    plotAreaHectares: 4.0,
+    screeningResults: [],
+    procurementAttempts: [],
+    historyEvents: [
+      {
+        eventId: `EV-SEED-${id}`,
+        timestamp: now,
+        actor: 'farmer@kisanspo.in',
+        actorRole: 'farmer',
+        eventType: 'LOT_CREATED',
+        summary: `Seeded default demo crop lot ${id} (${cropName}).`,
+        isVerified: true,
+        details: { cropName, quantityQuintals },
+      },
+    ],
+    readiness: DEFAULT_CROP_READINESS.map((item) => ({ ...item })),
+    procurementState: 'PLANNED',
+    ledgerEvents: [
+      {
+        eventId: `ev-init-${id}`,
+        lotId: id,
+        type: 'READINESS',
+        occurredAt: now,
+        source: 'DEMO',
+        verification: 'SEEDED_DEMO_LOT',
+        summary: `Crop-to-cash ledger initialized for ${cropName} (${id}).`,
+        payload: { initialized: true },
+      },
+    ],
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+seedDefaultDemoLot('KS-MP-2025-089', 'Sharbati Wheat', 'HI-1544 Sharbati', 50);
+seedDefaultDemoLot('KS-MP-2025-094', 'Soybean', 'JS-2034 High Oil', 42);
+seedDefaultDemoLot('KS-MH-2025-210', 'Medium Staple Cotton', 'Bt-Hybrid H4', 35);
+
+export function getExtendedLot(
+  lotId: string
+): ExtendedCropLotRecord | undefined {
   return extendedCropLots.get(lotId);
 }
 
