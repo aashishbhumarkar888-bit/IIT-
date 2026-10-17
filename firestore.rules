@@ -59,7 +59,15 @@ service cloud.firestore {
           'displayName',
           'role',
           'villageOrOrg',
+          'village',
+          'district',
+          'state',
           'preferredLanguage',
+          'onboardingStatus',
+          'onboardingStep',
+          'profileCompletion',
+          'isDemoAccount',
+          'demoDatasetVersion',
           'createdAt',
           'updatedAt'
         ]) &&
@@ -68,7 +76,15 @@ service cloud.firestore {
           'displayName',
           'role',
           'villageOrOrg',
+          'village',
+          'district',
+          'state',
           'preferredLanguage',
+          'onboardingStatus',
+          'onboardingStep',
+          'profileCompletion',
+          'isDemoAccount',
+          'demoDatasetVersion',
           'createdAt',
           'updatedAt'
         ]) &&
@@ -85,9 +101,27 @@ service cloud.firestore {
         data.villageOrOrg is string &&
         data.villageOrOrg.size() >= 1 &&
         data.villageOrOrg.size() <= 120 &&
+        data.village is string &&
+        data.village.size() <= 80 &&
+        data.district is string &&
+        data.district.size() <= 80 &&
+        data.state is string &&
+        data.state.size() <= 80 &&
         data.preferredLanguage is string &&
         data.preferredLanguage.size() == 2 &&
         data.preferredLanguage in ['en', 'hi'] &&
+        data.onboardingStatus is string &&
+        data.onboardingStatus.size() <= 16 &&
+        data.onboardingStatus in ['INCOMPLETE', 'COMPLETED', 'SKIPPED'] &&
+        data.onboardingStep is number &&
+        data.onboardingStep >= 1 &&
+        data.onboardingStep <= 4 &&
+        data.profileCompletion is number &&
+        data.profileCompletion >= 0 &&
+        data.profileCompletion <= 100 &&
+        data.isDemoAccount is bool &&
+        data.demoDatasetVersion is string &&
+        data.demoDatasetVersion.size() <= 32 &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
@@ -96,12 +130,14 @@ service cloud.firestore {
       return data.keys().hasAll([
           'uid',
           'email',
+          'phoneNumber',
           'emailVerified',
           'updatedAt'
         ]) &&
         data.keys().hasOnly([
           'uid',
           'email',
+          'phoneNumber',
           'emailVerified',
           'updatedAt'
         ]) &&
@@ -112,6 +148,8 @@ service cloud.firestore {
         data.email is string &&
         data.email.size() >= 3 &&
         data.email.size() <= 254 &&
+        data.phoneNumber is string &&
+        data.phoneNumber.size() <= 24 &&
         data.emailVerified is bool &&
         data.updatedAt is timestamp;
     }
@@ -123,6 +161,7 @@ service cloud.firestore {
           'shortCode',
           'farmerName',
           'cropName',
+          'variety',
           'quantityQuintals',
           'verificationStatus',
           'sha256Hash',
@@ -135,6 +174,7 @@ service cloud.firestore {
           'shortCode',
           'farmerName',
           'cropName',
+          'variety',
           'quantityQuintals',
           'verificationStatus',
           'sha256Hash',
@@ -158,6 +198,9 @@ service cloud.firestore {
         data.cropName is string &&
         data.cropName.size() >= 1 &&
         data.cropName.size() <= 120 &&
+        data.variety is string &&
+        data.variety.size() >= 1 &&
+        data.variety.size() <= 120 &&
         data.quantityQuintals is number &&
         data.quantityQuintals > 0 &&
         data.quantityQuintals <= 100000 &&
@@ -234,7 +277,6 @@ service cloud.firestore {
     // =========================================================================
     match /users/{userId} {
       allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
-      // Pillar 8 Cost-Optimization: No get()/exists() inside allow list
       allow list: if isSignedIn() && (existing().uid == request.auth.uid || isBootstrappedAdmin());
 
       allow create: if isVerifiedUser() &&
@@ -242,6 +284,7 @@ service cloud.firestore {
         isOwner(userId) &&
         isValidUserProfile(incoming()) &&
         incoming().uid == request.auth.uid &&
+        incoming().isDemoAccount == false &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
 
@@ -249,16 +292,24 @@ service cloud.firestore {
         isVerifiedUser() &&
         isValidId(userId) &&
         incoming().uid == existing().uid &&
+        incoming().isDemoAccount == existing().isDemoAccount &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time && (
-          // Action 1: Owner updates operational profile preferences
+          // Action 1: Owner updates onboarding or profile preferences
           (
             isOwner(userId) &&
             incoming().diff(existing()).affectedKeys().hasOnly([
               'displayName',
               'role',
               'villageOrOrg',
+              'village',
+              'district',
+              'state',
               'preferredLanguage',
+              'onboardingStatus',
+              'onboardingStep',
+              'profileCompletion',
+              'demoDatasetVersion',
               'updatedAt'
             ])
           ) ||
@@ -269,7 +320,14 @@ service cloud.firestore {
               'displayName',
               'role',
               'villageOrOrg',
+              'village',
+              'district',
+              'state',
               'preferredLanguage',
+              'onboardingStatus',
+              'onboardingStep',
+              'profileCompletion',
+              'demoDatasetVersion',
               'updatedAt'
             ])
           )
@@ -279,7 +337,6 @@ service cloud.firestore {
 
       // =======================================================================
       // Subcollection: /users/{userId}/private/{docId} (Isolated PII Vault)
-      // Enforces Pillar 1 Master Gate, Pillar 6 PII Isolation & Pillar 7 Atomicity
       // =======================================================================
       match /private/{docId} {
         allow get: if isSignedIn() &&
@@ -309,6 +366,7 @@ service cloud.firestore {
               isOwner(userId) &&
               incoming().diff(existing()).affectedKeys().hasOnly([
                 'email',
+                'phoneNumber',
                 'emailVerified',
                 'updatedAt'
               ])
@@ -322,14 +380,13 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // Collection 2: /cropLots/{lotId} (Persisted Digital Crop Passports)
+    // Collection 2: /cropLots/{lotId} (User-Scoped Digital Crop Passports)
     // =========================================================================
     match /cropLots/{lotId} {
       allow get: if isSignedIn() &&
         isValidId(lotId) &&
         (existing().ownerId == request.auth.uid || isAdmin());
 
-      // Pillar 8 Cost-Optimization: No get()/exists() inside allow list
       allow list: if isSignedIn() &&
         (existing().ownerId == request.auth.uid || isBootstrappedAdmin());
 
@@ -349,10 +406,14 @@ service cloud.firestore {
         incoming().ownerId == existing().ownerId &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time && (
-          // Action 1: Owner updates verification status or quantity
+          // Action 1: Owner updates crop lot details or verification status
           (
             existing().ownerId == request.auth.uid &&
             incoming().diff(existing()).affectedKeys().hasOnly([
+              'shortCode',
+              'farmerName',
+              'cropName',
+              'variety',
               'verificationStatus',
               'quantityQuintals',
               'sha256Hash',
@@ -381,7 +442,6 @@ service cloud.firestore {
         isValidId(logId) &&
         (existing().actorUid == request.auth.uid || isAdmin());
 
-      // Pillar 8 Cost-Optimization: No get()/exists() inside allow list
       allow list: if isSignedIn() &&
         (existing().actorUid == request.auth.uid || isBootstrappedAdmin());
 

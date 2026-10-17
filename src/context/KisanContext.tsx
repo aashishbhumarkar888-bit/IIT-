@@ -29,6 +29,7 @@ import {
   DeliveryConfirmationStatus,
   FarmPlot,
   Language,
+  OnboardingStatus,
   Payment,
   PaymentStatus,
   UserRole,
@@ -39,11 +40,13 @@ export type AppRoute =
   | '/login'
   | '/signup'
   | '/forgot-password'
+  | '/onboarding'
   | '/dashboard'
   | '/advisory'
   | '/crop-passport'
   | '/market-comparison'
   | '/harvest-payments'
+  | '/profile'
   | '/showcase'
   | '/admin';
 
@@ -54,11 +57,13 @@ export const PUBLIC_ROUTES: AppRoute[] = [
 ];
 
 export const PROTECTED_ROUTES: AppRoute[] = [
+  '/onboarding',
   '/dashboard',
   '/advisory',
   '/crop-passport',
   '/market-comparison',
   '/harvest-payments',
+  '/profile',
   '/showcase',
   '/admin',
 ];
@@ -72,11 +77,43 @@ export interface AuthenticatedUser {
   nameHi: string;
   role: 'farmer' | 'agent' | 'buyer' | 'admin';
   villageOrOrg: string;
+  village?: string;
+  district?: string;
+  state?: string;
+  phoneNumber?: string;
+  preferredLanguage?: Language;
+  onboardingStatus?: OnboardingStatus;
+  onboardingStep?: number;
+  profileCompletion?: number;
+  isDemoAccount?: boolean;
+  demoDatasetVersion?: string;
   uidLabel: string;
   emailVerified: boolean;
   active: boolean;
   createdAt?: string;
+  updatedAt?: string;
   lastLoginAt?: string;
+}
+
+export interface ProfileUpdatePayload {
+  name?: string;
+  preferredLanguage?: Language;
+  phoneNumber?: string;
+  role?: UserRole;
+  village?: string;
+  district?: string;
+  state?: string;
+  onboardingStatus?: OnboardingStatus;
+  onboardingStep?: number;
+  profileCompletion?: number;
+}
+
+export interface NewPersonalCropInput {
+  cropName: string;
+  variety: string;
+  quantityQuintals: number;
+  surveyNumber?: string;
+  harvestDate?: string;
 }
 
 function parsePathname(): AppRoute {
@@ -100,7 +137,10 @@ interface KisanContextValue {
     preferredVillageOrOrg?: string,
     openAdminAfter?: boolean
   ) => Promise<{ ok: boolean; error?: string }>;
-  loginWithServer: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  loginWithServer: (
+    email: string,
+    password: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   registerWithServer: (params: {
     name: string;
     email: string;
@@ -112,8 +152,21 @@ interface KisanContextValue {
     email: string,
     password: string
   ) => Promise<{ ok: boolean; error?: string }>;
+  updateUserProfile: (
+    updates: ProfileUpdatePayload
+  ) => Promise<{ ok: boolean; error?: string }>;
+  addPersonalCropLot: (
+    input: NewPersonalCropInput
+  ) => Promise<{ ok: boolean; lot?: CropLot; error?: string }>;
+  resetDemoDataset: () => Promise<void>;
   verifyEmailWithServer: () => Promise<void>;
   logout: () => Promise<void>;
+
+  // Dashboard Mode (Personal Assistant vs Operations Desk)
+  workspaceViewMode: 'PERSONAL' | 'OPERATIONS_DESK';
+  setWorkspaceViewMode: (mode: 'PERSONAL' | 'OPERATIONS_DESK') => void;
+  addCropModalOpen: boolean;
+  setAddCropModalOpen: (open: boolean) => void;
 
   // Admin Shortcut Dialog (Ctrl+Shift+A / Cmd+Shift+A)
   adminDialogOpen: boolean;
@@ -129,13 +182,17 @@ interface KisanContextValue {
   setLanguage: (lang: Language) => void;
   t: (en: string, hi: string) => string;
 
-  // Crop Lots & Verification
+  // Crop Lots & Verification (Scoped by User / Demo Account)
+  personalLots: CropLot[];
   selectedLotId: string;
   setSelectedLotId: (lotId: string) => void;
   currentLot: CropLot;
   currentPlot: FarmPlot;
   allLots: CropLot[];
-  updateLotVerificationStatus: (lotId: string, status: VerificationStatus) => void;
+  updateLotVerificationStatus: (
+    lotId: string,
+    status: VerificationStatus
+  ) => void;
 
   // Arbitrage Calculator
   arbitrageInput: ArbitrageCalculationInput;
@@ -145,7 +202,9 @@ interface KisanContextValue {
   processorPivotApproved: boolean;
   approveProcessorPivot: (secondaryBuyerName: string) => void;
   selectedSaleOption: 'DIRECT_BUYER' | 'MANDI' | 'SALVAGE_PIVOT';
-  setSelectedSaleOption: (opt: 'DIRECT_BUYER' | 'MANDI' | 'SALVAGE_PIVOT') => void;
+  setSelectedSaleOption: (
+    opt: 'DIRECT_BUYER' | 'MANDI' | 'SALVAGE_PIVOT'
+  ) => void;
   contractLocked: boolean;
   setContractLocked: (locked: boolean) => void;
 
@@ -197,8 +256,12 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
   const [token, setToken] = useState<string | null>(null);
   const [devDemoMode, setDevDemoMode] = useState<boolean>(true);
   const [adminDialogOpen, setAdminDialogOpen] = useState<boolean>(false);
+  const [addCropModalOpen, setAddCropModalOpen] = useState<boolean>(false);
+  const [workspaceViewMode, setWorkspaceViewMode] = useState<
+    'PERSONAL' | 'OPERATIONS_DESK'
+  >('PERSONAL');
 
-  const [role, setRoleState] = useState<UserRole>('agent');
+  const [role, setRoleState] = useState<UserRole>('farmer');
   const [language, setLanguageState] = useState<Language>(() => {
     try {
       const saved = localStorage.getItem('kisan_spo_lang');
@@ -209,14 +272,14 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     return 'en';
   });
 
+  const [personalLots, setPersonalLots] = useState<CropLot[]>([]);
   const [selectedLotId, setSelectedLotId] = useState<string>('KS-MP-2025-089');
   const [statusOverrides, setStatusOverrides] = useState<
     Record<string, VerificationStatus>
   >({});
 
-  const [arbitrageInput, setArbitrageInput] = useState<ArbitrageCalculationInput>(
-    DEFAULT_ARBITRAGE_INPUT
-  );
+  const [arbitrageInput, setArbitrageInput] =
+    useState<ArbitrageCalculationInput>(DEFAULT_ARBITRAGE_INPUT);
   const [processorPivotApproved, setProcessorPivotApproved] =
     useState<boolean>(false);
   const [selectedSaleOption, setSelectedSaleOption] = useState<
@@ -257,6 +320,27 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
+  const determinePostLoginDestination = useCallback(
+    (authedUser: AuthenticatedUser, preferredDest?: AppRoute): AppRoute => {
+      if (authedUser.role === 'admin' && preferredDest === '/admin') {
+        return '/admin';
+      }
+      if (authedUser.onboardingStatus === 'INCOMPLETE') {
+        return '/onboarding';
+      }
+      if (
+        preferredDest &&
+        PROTECTED_ROUTES.includes(preferredDest) &&
+        preferredDest !== '/admin' &&
+        preferredDest !== '/onboarding'
+      ) {
+        return preferredDest;
+      }
+      return '/dashboard';
+    },
+    []
+  );
+
   // Verify existing Firebase Auth or Server session on initial load
   useEffect(() => {
     let cancelled = false;
@@ -277,6 +361,14 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
               displayName: profile.displayName,
               role: profile.role,
               villageOrOrg: profile.villageOrOrg,
+              village: profile.village,
+              district: profile.district,
+              state: profile.state,
+              phoneNumber: profile.phoneNumber,
+              preferredLanguage: profile.preferredLanguage,
+              onboardingStatus: profile.onboardingStatus,
+              onboardingStep: profile.onboardingStep,
+              profileCompletion: profile.profileCompletion,
               emailVerified: profile.emailVerified,
             }),
           });
@@ -293,20 +385,27 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
             setDevDemoMode(Boolean(syncData.devDemoMode));
             setRoleState(profile.role);
             setLanguageState(profile.preferredLanguage);
+            setWorkspaceViewMode(
+              syncData.user.isDemoAccount ? 'PERSONAL' : 'PERSONAL'
+            );
             setAuthStatus('AUTHENTICATED');
 
             if (unsubscribeLots) unsubscribeLots();
-            unsubscribeLots = subscribeToUserCropLots(profile.uid, (lotMap) => {
-              setStatusOverrides((prev) => ({ ...prev, ...lotMap }));
-            });
+            unsubscribeLots = subscribeToUserCropLots(
+              profile.uid,
+              (lotMap, fbPersonalLots) => {
+                setStatusOverrides((prev) => ({ ...prev, ...lotMap }));
+                if (fbPersonalLots.length > 0) {
+                  setPersonalLots(fbPersonalLots);
+                  setSelectedLotId(fbPersonalLots[0].id);
+                }
+              }
+            );
 
-            const target: AppRoute =
-              initialPath === '/admin' && syncData.user.role === 'admin'
-                ? '/admin'
-                : PROTECTED_ROUTES.includes(initialPath) &&
-                  initialPath !== '/admin'
-                ? initialPath
-                : '/dashboard';
+            const target = determinePostLoginDestination(
+              syncData.user,
+              initialPath
+            );
             syncHistory(target);
             return;
           }
@@ -341,17 +440,25 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
         if (!cancelled && res.ok && data.authenticated && data.user) {
           setToken(savedToken);
           setUser(data.user);
+          setPersonalLots(data.personalLots || []);
+          if (data.personalLots?.length > 0) {
+            setSelectedLotId(data.personalLots[0].id);
+          } else if (data.user.isDemoAccount) {
+            setSelectedLotId('KS-MP-2025-089');
+          }
           setDevDemoMode(Boolean(data.devDemoMode));
           if (data.user.role !== 'admin') {
             setRoleState(data.user.role as UserRole);
           }
+          if (
+            data.user.preferredLanguage === 'en' ||
+            data.user.preferredLanguage === 'hi'
+          ) {
+            setLanguageState(data.user.preferredLanguage);
+          }
+          setWorkspaceViewMode('PERSONAL');
           setAuthStatus('AUTHENTICATED');
-          const target: AppRoute =
-            initialPath === '/admin' && data.user.role === 'admin'
-              ? '/admin'
-              : PROTECTED_ROUTES.includes(initialPath) && initialPath !== '/admin'
-              ? initialPath
-              : '/dashboard';
+          const target = determinePostLoginDestination(data.user, initialPath);
           syncHistory(target);
         } else if (!cancelled) {
           try {
@@ -375,7 +482,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
       unsubscribeAuth();
       if (unsubscribeLots) unsubscribeLots();
     };
-  }, [initialPath, syncHistory]);
+  }, [initialPath, syncHistory, determinePostLoginDestination]);
 
   // Global keyboard shortcut: Ctrl + Shift + A (Windows/Linux) or Cmd + Shift + A (macOS)
   useEffect(() => {
@@ -386,7 +493,6 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (!isModifier || !isShift || !isKeyA) return;
 
-      // Do not trigger while typing inside an editable control
       const target = e.target as HTMLElement | null;
       if (target) {
         const tag = target.tagName;
@@ -400,7 +506,6 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
         }
       }
 
-      // Do not trigger if another modal dialog is currently open
       if (document.querySelector('[role="dialog"]')) {
         return;
       }
@@ -417,7 +522,10 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     const handlePopState = () => {
       const target = parsePathname();
-      if (authStatus !== 'AUTHENTICATED' && PROTECTED_ROUTES.includes(target)) {
+      if (
+        authStatus !== 'AUTHENTICATED' &&
+        PROTECTED_ROUTES.includes(target)
+      ) {
         if (target !== '/admin') setIntendedRoute(target);
         syncHistory('/login');
         return;
@@ -438,7 +546,10 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const navigate = useCallback(
     (nextRoute: AppRoute) => {
-      if (authStatus !== 'AUTHENTICATED' && PROTECTED_ROUTES.includes(nextRoute)) {
+      if (
+        authStatus !== 'AUTHENTICATED' &&
+        PROTECTED_ROUTES.includes(nextRoute)
+      ) {
         if (nextRoute !== '/admin') {
           setIntendedRoute(nextRoute);
         }
@@ -456,11 +567,11 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     [authStatus, user, syncHistory]
   );
 
-  // Animation 3 & Transition 1: Brief authentication success cue before entering destination
   const completeAuthTransition = useCallback(
     (
       sessionToken: string,
       authedUser: AuthenticatedUser,
+      userLots: CropLot[],
       destination: AppRoute
     ) => {
       try {
@@ -470,15 +581,28 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       setToken(sessionToken);
       setUser(authedUser);
+      setPersonalLots(userLots);
+      if (userLots.length > 0) {
+        setSelectedLotId(userLots[0].id);
+      } else if (authedUser.isDemoAccount) {
+        setSelectedLotId('KS-MP-2025-089');
+      }
       if (authedUser.role !== 'admin') {
         setRoleState(authedUser.role as UserRole);
       }
+      if (
+        authedUser.preferredLanguage === 'en' ||
+        authedUser.preferredLanguage === 'hi'
+      ) {
+        setLanguageState(authedUser.preferredLanguage);
+      }
+      setWorkspaceViewMode('PERSONAL');
       setAuthSuccessTransition(true);
       setTimeout(() => {
         setAuthStatus('AUTHENTICATED');
         setAuthSuccessTransition(false);
         syncHistory(destination);
-      }, 280);
+      }, 260);
     },
     [syncHistory]
   );
@@ -486,7 +610,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
   const loginWithGoogle = useCallback(
     async (
       preferredRole: UserRole = 'farmer',
-      preferredVillageOrOrg: string = 'Khandwa Cluster',
+      preferredVillageOrOrg: string = '',
       openAdminAfter: boolean = false
     ): Promise<{ ok: boolean; error?: string }> => {
       try {
@@ -503,6 +627,14 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
             displayName: profile.displayName,
             role: profile.role,
             villageOrOrg: profile.villageOrOrg,
+            village: profile.village,
+            district: profile.district,
+            state: profile.state,
+            phoneNumber: profile.phoneNumber,
+            preferredLanguage: profile.preferredLanguage,
+            onboardingStatus: profile.onboardingStatus,
+            onboardingStep: profile.onboardingStep,
+            profileCompletion: profile.profileCompletion,
             emailVerified: profile.emailVerified,
           }),
         });
@@ -527,10 +659,13 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
         const destination: AppRoute =
           openAdminAfter && syncData.user.role === 'admin'
             ? '/admin'
-            : syncData.user.role === 'admin'
-            ? '/admin'
-            : intendedRoute || '/dashboard';
-        completeAuthTransition(syncData.token, syncData.user, destination);
+            : determinePostLoginDestination(syncData.user, intendedRoute);
+        completeAuthTransition(
+          syncData.token,
+          syncData.user,
+          syncData.personalLots || [],
+          destination
+        );
         showToast(
           `Signed in with Google (${profile.email}) • Synced with Cloud Firestore`,
           'green'
@@ -549,7 +684,12 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
         };
       }
     },
-    [intendedRoute, completeAuthTransition, showToast]
+    [
+      intendedRoute,
+      determinePostLoginDestination,
+      completeAuthTransition,
+      showToast,
+    ]
   );
 
   const loginWithServer = useCallback(
@@ -571,8 +711,15 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
           };
         }
         const target =
-          data.user.role === 'admin' ? '/admin' : intendedRoute || '/dashboard';
-        completeAuthTransition(data.token, data.user, target);
+          data.user.role === 'admin'
+            ? '/admin'
+            : determinePostLoginDestination(data.user, intendedRoute);
+        completeAuthTransition(
+          data.token,
+          data.user,
+          data.personalLots || [],
+          target
+        );
         return { ok: true };
       } catch {
         return {
@@ -581,7 +728,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
         };
       }
     },
-    [intendedRoute, completeAuthTransition]
+    [intendedRoute, determinePostLoginDestination, completeAuthTransition]
   );
 
   const registerWithServer = useCallback(
@@ -608,7 +755,8 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
         completeAuthTransition(
           data.token,
           data.user,
-          intendedRoute || '/dashboard'
+          [],
+          '/onboarding'
         );
         return { ok: true };
       } catch {
@@ -618,7 +766,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
         };
       }
     },
-    [intendedRoute, completeAuthTransition]
+    [completeAuthTransition]
   );
 
   const adminLoginWithServer = useCallback(
@@ -642,7 +790,12 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
           };
         }
         setAdminDialogOpen(false);
-        completeAuthTransition(data.token, data.user, '/admin');
+        completeAuthTransition(
+          data.token,
+          data.user,
+          data.personalLots || [],
+          '/admin'
+        );
         showToast(
           `Verified Administrator Session: ${data.user.name}`,
           'green'
@@ -657,6 +810,150 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     },
     [completeAuthTransition, showToast]
   );
+
+  const updateUserProfile = useCallback(
+    async (
+      updates: ProfileUpdatePayload
+    ): Promise<{ ok: boolean; error?: string }> => {
+      if (!token) {
+        return { ok: false, error: 'Not authenticated.' };
+      }
+      try {
+        const res = await fetch('/api/profile', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(updates),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.user) {
+          return {
+            ok: false,
+            error: data.error || 'Could not save profile changes.',
+          };
+        }
+        setUser(data.user);
+        if (
+          updates.role &&
+          (updates.role === 'farmer' ||
+            updates.role === 'agent' ||
+            updates.role === 'buyer')
+        ) {
+          setRoleState(updates.role);
+        }
+        if (
+          updates.preferredLanguage === 'en' ||
+          updates.preferredLanguage === 'hi'
+        ) {
+          setLanguageState(updates.preferredLanguage);
+          try {
+            localStorage.setItem('kisan_spo_lang', updates.preferredLanguage);
+          } catch {
+            // Ignore
+          }
+        }
+
+        // Also persist to Cloud Firestore if authenticated with Firebase
+        await updateFirestoreUserPreferences({
+          displayName: updates.name,
+          role: updates.role,
+          village: updates.village,
+          district: updates.district,
+          state: updates.state,
+          preferredLanguage: updates.preferredLanguage,
+          onboardingStatus: updates.onboardingStatus,
+          onboardingStep: updates.onboardingStep,
+          profileCompletion: updates.profileCompletion,
+          phoneNumber: updates.phoneNumber,
+        }).catch(() => {
+          // Ignore if local server auth
+        });
+
+        return { ok: true };
+      } catch {
+        return {
+          ok: false,
+          error: 'Network error while saving your profile.',
+        };
+      }
+    },
+    [token]
+  );
+
+  const addPersonalCropLot = useCallback(
+    async (
+      input: NewPersonalCropInput
+    ): Promise<{ ok: boolean; lot?: CropLot; error?: string }> => {
+      if (!token) {
+        return { ok: false, error: 'Authentication required.' };
+      }
+      try {
+        const res = await fetch('/api/profile/crops', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(input),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.lot) {
+          return {
+            ok: false,
+            error: data.error || 'Could not add crop lot.',
+          };
+        }
+        const createdLot: CropLot = data.lot;
+        setPersonalLots(data.personalLots || [createdLot]);
+        setSelectedLotId(createdLot.id);
+        setArbitrageInput((prev) => ({
+          ...prev,
+          quantityQuintals: createdLot.quantityQuintals,
+        }));
+
+        await saveCropLotToFirestore(createdLot).catch(() => {
+          // Ignore if local server auth
+        });
+
+        showToast(
+          `Added ${createdLot.quantityQuintals} Quintals of ${createdLot.cropName} (${createdLot.shortCode}) to your workspace.`,
+          'green'
+        );
+        return { ok: true, lot: createdLot };
+      } catch {
+        return {
+          ok: false,
+          error: 'Network error while saving your crop lot.',
+        };
+      }
+    },
+    [token, showToast]
+  );
+
+  const resetDemoDataset = useCallback(async () => {
+    setStatusOverrides({});
+    setArbitrageInput(DEFAULT_ARBITRAGE_INPUT);
+    setProcessorPivotApproved(false);
+    setSelectedSaleOption('DIRECT_BUYER');
+    setContractLocked(false);
+    setPaymentBase(INITIAL_PAYMENT);
+    if (token) {
+      try {
+        await fetch('/api/demo/reset', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
+        // Ignore
+      }
+    }
+    showToast(
+      'Demo dataset reset to clean baseline (Real user profiles unaffected).',
+      'blue'
+    );
+  }, [token, showToast]);
 
   const verifyEmailWithServer = useCallback(async () => {
     if (!token) return;
@@ -698,6 +995,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     }
     setToken(null);
     setUser(null);
+    setPersonalLots([]);
     setContractLocked(false);
     setProcessorPivotApproved(false);
     setAuthStatus('UNAUTHENTICATED');
@@ -708,17 +1006,19 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
   const setRole = useCallback(
     (nextRole: UserRole) => {
       setRoleState(nextRole);
-      updateFirestoreUserPreferences({ role: nextRole }).catch(() => {
-        // Ignore if not using Firebase auth
-      });
+      if (token) {
+        updateUserProfile({ role: nextRole }).catch(() => {
+          // Ignore
+        });
+      }
       const roleLabels: Record<UserRole, string> = {
         farmer: 'Farmer / Family Proxy (किसान / पारिवारिक प्रतिनिधि)',
         agent: 'Village Agent / Arhtiya Partner (ग्रामीण एजेंट / आढ़तिया साथी)',
         buyer: 'Institutional Buyer (संस्थागत खरीदार)',
       };
-      showToast(`Active view switched to: ${roleLabels[nextRole]}`, 'blue');
+      showToast(`Active workspace switched to: ${roleLabels[nextRole]}`, 'blue');
     },
-    [showToast]
+    [token, updateUserProfile, showToast]
   );
 
   const setLanguage = useCallback(
@@ -729,11 +1029,11 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
       } catch {
         // Ignore
       }
-      updateFirestoreUserPreferences({ preferredLanguage: nextLang }).catch(
-        () => {
+      if (token) {
+        updateUserProfile({ preferredLanguage: nextLang }).catch(() => {
           // Ignore
-        }
-      );
+        });
+      }
       showToast(
         nextLang === 'hi'
           ? 'भाषा बदली गई: हिंदी (Hindi Active)'
@@ -741,7 +1041,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
         'blue'
       );
     },
-    [showToast]
+    [token, updateUserProfile, showToast]
   );
 
   const t = useCallback(
@@ -749,12 +1049,22 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     [language]
   );
 
+  // Scoped Lots:
+  // - Demo accounts or Admin see the isolated Demo Dataset (+ any personal lots they add).
+  // - Real accounts with personal lots see their own personal lots first (plus can inspect labeled Demo Sample Lots on the Crop Passport screen if needed).
   const allLots = useMemo(() => {
-    return CROP_LOTS.map((l) => {
+    const mergedSource =
+      user?.isDemoAccount || user?.role === 'admin'
+        ? [...personalLots, ...CROP_LOTS]
+        : personalLots.length > 0
+        ? personalLots
+        : CROP_LOTS;
+
+    return mergedSource.map((l) => {
       const override = statusOverrides[l.id];
       return override ? { ...l, verificationStatus: override } : l;
     });
-  }, [statusOverrides]);
+  }, [user, personalLots, statusOverrides]);
 
   const currentLot = useMemo(() => {
     return allLots.find((l) => l.id === selectedLotId) || allLots[0];
@@ -767,20 +1077,22 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
   const updateLotVerificationStatus = useCallback(
     (lotId: string, status: VerificationStatus) => {
       setStatusOverrides((prev) => ({ ...prev, [lotId]: status }));
-      const targetLot = CROP_LOTS.find((l) => l.id === lotId);
+      const targetLot =
+        personalLots.find((l) => l.id === lotId) ||
+        CROP_LOTS.find((l) => l.id === lotId);
       if (targetLot) {
         saveCropLotToFirestore(targetLot, status).catch(() => {
           // Ignore if demo mode without Firebase user
         });
       }
       showToast(
-        `Lot ${lotId} credential state updated to ${status.replace(/_/g, ' ')} (Synced to Firestore)`,
+        `Lot ${lotId} credential state updated to ${status.replace(/_/g, ' ')}`,
         status === 'INDEPENDENTLY_VERIFIED' || status === 'LABORATORY_TESTED'
           ? 'green'
           : 'saffron'
       );
     },
-    [showToast]
+    [personalLots, showToast]
   );
 
   const updateArbitrageInput = useCallback(
@@ -861,8 +1173,15 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
         loginWithServer,
         registerWithServer,
         adminLoginWithServer,
+        updateUserProfile,
+        addPersonalCropLot,
+        resetDemoDataset,
         verifyEmailWithServer,
         logout,
+        workspaceViewMode,
+        setWorkspaceViewMode,
+        addCropModalOpen,
+        setAddCropModalOpen,
         adminDialogOpen,
         setAdminDialogOpen,
         route,
@@ -873,6 +1192,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
         language,
         setLanguage,
         t,
+        personalLots,
         selectedLotId,
         setSelectedLotId,
         currentLot,

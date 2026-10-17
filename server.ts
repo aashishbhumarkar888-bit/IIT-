@@ -12,6 +12,43 @@ const SESSION_SECRET =
   crypto.randomBytes(32).toString('hex');
 
 export type ServerUserRole = 'farmer' | 'agent' | 'buyer' | 'admin';
+export type ServerOnboardingStatus = 'INCOMPLETE' | 'COMPLETED' | 'SKIPPED';
+
+interface ServerCropLotRecord {
+  id: string;
+  shortCode: string;
+  farmerId: string;
+  farmerName: string;
+  farmerNameHi: string;
+  cropName: string;
+  cropNameHi: string;
+  variety: string;
+  varietyHi: string;
+  grade: string;
+  quantityQuintals: number;
+  harvestDate: string;
+  plotAreaHectares: number;
+  surveyNumber: string;
+  verificationStatus:
+    | 'INDEPENDENTLY_VERIFIED'
+    | 'LABORATORY_TESTED'
+    | 'DOCUMENT_VERIFIED'
+    | 'FARMER_DECLARED'
+    | 'VERIFICATION_PENDING';
+  evidenceIds: string[];
+  evidence: {
+    id: string;
+    labName: string;
+    certificateNumber: string;
+    testedDate: string;
+    mrlStatus: 'ZERO_EXCEEDANCE' | 'PENDING_LAB' | 'SELF_DECLARED';
+    sha256Hash: string;
+    moisturePercent: number;
+    foreignMatterPercent: number;
+  };
+  mandiPricePerQuintal: number;
+  directBuyerPricePerQuintal: number;
+}
 
 interface ServerUserRecord {
   id: string;
@@ -20,12 +57,23 @@ interface ServerUserRecord {
   nameHi: string;
   role: ServerUserRole;
   villageOrOrg: string;
+  village: string;
+  district: string;
+  state: string;
+  phoneNumber: string;
+  preferredLanguage: 'en' | 'hi';
+  onboardingStatus: ServerOnboardingStatus;
+  onboardingStep: number;
+  profileCompletion: number;
+  isDemoAccount: boolean;
+  demoDatasetVersion: string;
   uidLabel: string;
   passwordSalt: string;
   passwordHash: string;
   emailVerified: boolean;
   active: boolean;
   createdAt: string;
+  updatedAt: string;
   lastLoginAt: string;
 }
 
@@ -40,13 +88,20 @@ interface AuditLogEntry {
   status: 'SUCCESS' | 'DENIED' | 'WARNING';
 }
 
-function hashPassword(password: string, salt?: string): { salt: string; hash: string } {
+function hashPassword(
+  password: string,
+  salt?: string
+): { salt: string; hash: string } {
   const actualSalt = salt || crypto.randomBytes(16).toString('hex');
   const derived = crypto.scryptSync(password, actualSalt, 64).toString('hex');
   return { salt: actualSalt, hash: derived };
 }
 
-function verifyPassword(password: string, salt: string, expectedHash: string): boolean {
+function verifyPassword(
+  password: string,
+  salt: string,
+  expectedHash: string
+): boolean {
   const derived = crypto.scryptSync(password, salt, 64).toString('hex');
   const a = Buffer.from(derived, 'hex');
   const b = Buffer.from(expectedHash, 'hex');
@@ -54,91 +109,231 @@ function verifyPassword(password: string, salt: string, expectedHash: string): b
   return crypto.timingSafeEqual(a, b);
 }
 
-// Seed initial accounts for Local Development Demonstration Mode
 const isDevDemoMode = !process.env.ADMIN_PASSWORD_HASH;
 
 const usersMap = new Map<string, ServerUserRecord>();
+// Isolated per-user crop lots store keyed by lowercase user email
+const userCropLotsMap = new Map<string, ServerCropLotRecord[]>();
 
-function seedUser(
-  id: string,
-  email: string,
-  plainKeyForDevSeed: string,
-  name: string,
-  nameHi: string,
-  role: ServerUserRole,
-  villageOrOrg: string,
-  uidLabel: string
-) {
-  const { salt, hash } = hashPassword(plainKeyForDevSeed);
-  usersMap.set(email.toLowerCase(), {
-    id,
-    email: email.toLowerCase(),
-    name,
-    nameHi,
-    role,
-    villageOrOrg,
-    uidLabel,
+function seedUser(params: {
+  id: string;
+  email: string;
+  plainKeyForDevSeed: string;
+  name: string;
+  nameHi: string;
+  role: ServerUserRole;
+  villageOrOrg: string;
+  village: string;
+  district: string;
+  state: string;
+  phoneNumber?: string;
+  preferredLanguage?: 'en' | 'hi';
+  onboardingStatus: ServerOnboardingStatus;
+  onboardingStep: number;
+  profileCompletion: number;
+  isDemoAccount: boolean;
+  demoDatasetVersion?: string;
+  uidLabel: string;
+  initialLots?: ServerCropLotRecord[];
+}) {
+  const { salt, hash } = hashPassword(params.plainKeyForDevSeed);
+  const normalizedEmail = params.email.toLowerCase();
+  usersMap.set(normalizedEmail, {
+    id: params.id,
+    email: normalizedEmail,
+    name: params.name,
+    nameHi: params.nameHi,
+    role: params.role,
+    villageOrOrg: params.villageOrOrg,
+    village: params.village,
+    district: params.district,
+    state: params.state,
+    phoneNumber: params.phoneNumber || '',
+    preferredLanguage: params.preferredLanguage || 'en',
+    onboardingStatus: params.onboardingStatus,
+    onboardingStep: params.onboardingStep,
+    profileCompletion: params.profileCompletion,
+    isDemoAccount: params.isDemoAccount,
+    demoDatasetVersion: params.demoDatasetVersion || '',
+    uidLabel: params.uidLabel,
     passwordSalt: salt,
     passwordHash: hash,
     emailVerified: true,
     active: true,
     createdAt: '2026-10-01 09:00 IST',
+    updatedAt: '2026-10-17 05:30 IST',
     lastLoginAt: '2026-10-17 05:30 IST',
   });
+  userCropLotsMap.set(normalizedEmail, params.initialLots || []);
 }
 
-// Derived at runtime in memory for local evaluation
 const devKeyPrefix = 'Kisan@';
-seedUser(
-  'USR-FARMER-01',
-  'ramesh.patel@kisan-spo.in',
-  `${devKeyPrefix}2026`,
-  'Ramesh Patel',
-  'रमेश पटेल',
-  'farmer',
-  'Chhaigaon Makhan, Khandwa',
-  'UID 9482'
-);
-seedUser(
-  'USR-FARMER-02',
-  'suresh.kumar@kisan-spo.in',
-  `${devKeyPrefix}2026`,
-  'Suresh Kumar',
-  'सुरेश कुमार',
-  'farmer',
-  'Deshgaon, Khandwa',
-  'UID 0124'
-);
-seedUser(
-  'USR-AGENT-01',
-  'agent.khandwa@kisan-spo.in',
-  `${devKeyPrefix}2026`,
-  'Dr. S. R. Raman (Agent #402)',
-  'डॉ. एस. आर. रमन (आढ़तिया साथी)',
-  'agent',
-  'APMC Khandwa Central Hub',
-  'AGENT #402'
-);
-seedUser(
-  'USR-BUYER-01',
-  'procurement@itc-agri.in',
-  `${devKeyPrefix}2026`,
-  'ITC Agri Procurement Desk',
-  'आईटीसी एग्री खरीद डेस्क',
-  'buyer',
-  'Indore Processing Mill Hub',
-  'CORP-ITC-88'
-);
-seedUser(
-  'USR-ADMIN-01',
-  (process.env.ADMIN_EMAIL || 'registrar.admin@kisan-spo.org.in').toLowerCase(),
-  `${devKeyPrefix}Admin#2026`,
-  'Chief Mandi Registrar (Admin)',
-  'मुख्य मंडी रजिस्ट्रार (प्रशासक)',
-  'admin',
-  'MP State AgriStack Directorate',
-  'REGISTRAR-01'
-);
+
+// EXPERIENCE B: Dedicated Seeded Demo Farmer Account (Ramesh Patel)
+seedUser({
+  id: 'USR-DEMO-FARMER',
+  email: 'ramesh.patel@kisan-spo.in',
+  plainKeyForDevSeed: `${devKeyPrefix}2026`,
+  name: 'Ramesh Patel',
+  nameHi: 'रमेश पटेल',
+  role: 'farmer',
+  villageOrOrg: 'Chhaigaon Makhan, Khandwa, Madhya Pradesh',
+  village: 'Chhaigaon Makhan',
+  district: 'Khandwa',
+  state: 'Madhya Pradesh',
+  phoneNumber: '+91 98260-41109',
+  preferredLanguage: 'en',
+  onboardingStatus: 'COMPLETED',
+  onboardingStep: 4,
+  profileCompletion: 100,
+  isDemoAccount: true,
+  demoDatasetVersion: 'v2.4-demo',
+  uidLabel: 'DEMO-UID-9482',
+});
+
+// EXPERIENCE C: Returning Authenticated Non-Demo User (Suresh Kumar — has 1 saved personal Soybean lot)
+seedUser({
+  id: 'USR-RETURNING-FARMER',
+  email: 'suresh.kumar@kisan-spo.in',
+  plainKeyForDevSeed: `${devKeyPrefix}2026`,
+  name: 'Suresh Kumar',
+  nameHi: 'सुरेश कुमार',
+  role: 'farmer',
+  villageOrOrg: 'Deshgaon, Khandwa, Madhya Pradesh',
+  village: 'Deshgaon',
+  district: 'Khandwa',
+  state: 'Madhya Pradesh',
+  phoneNumber: '+91 94251-88124',
+  preferredLanguage: 'en',
+  onboardingStatus: 'COMPLETED',
+  onboardingStep: 4,
+  profileCompletion: 100,
+  isDemoAccount: false,
+  demoDatasetVersion: '',
+  uidLabel: 'UID-0124',
+  initialLots: [
+    {
+      id: 'KS-2025-0124',
+      shortCode: '#KS-0124',
+      farmerId: 'USR-RETURNING-FARMER',
+      farmerName: 'Suresh Kumar',
+      farmerNameHi: 'सुरेश कुमार',
+      cropName: 'Soybean',
+      cropNameHi: 'सोयाबीन',
+      variety: 'JS-2034 High Oil',
+      varietyHi: 'जेएस-2034 सोयाबीन',
+      grade: 'FAQ Grade A',
+      quantityQuintals: 25,
+      harvestDate: '17 Oct 2026',
+      plotAreaHectares: 1.85,
+      surveyNumber: 'Survey No. 88/1B',
+      verificationStatus: 'DOCUMENT_VERIFIED',
+      evidenceIds: ['EV-AGRISTACK-2026-88'],
+      evidence: {
+        id: 'EV-AGRISTACK-2026-88',
+        labName: 'Khandwa Mandi Quality Desk',
+        certificateNumber: 'DOC-MP-88-2026',
+        testedDate: '16 Oct 2026',
+        mrlStatus: 'PENDING_LAB',
+        sha256Hash:
+          '3b71d9f02c88e1a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8',
+        moisturePercent: 11.4,
+        foreignMatterPercent: 1.2,
+      },
+      mandiPricePerQuintal: 1820,
+      directBuyerPricePerQuintal: 2150,
+    },
+  ],
+});
+
+// EXPERIENCE A: Fresh New User Account for Isolation Testing (Anita Verma — incomplete onboarding, 0 crops)
+seedUser({
+  id: 'USR-NEW-FARMER',
+  email: 'anita.verma@kisan-spo.in',
+  plainKeyForDevSeed: `${devKeyPrefix}2026`,
+  name: 'Anita Verma',
+  nameHi: 'अनीता वर्मा',
+  role: 'farmer',
+  villageOrOrg: 'Unassigned Workspace',
+  village: '',
+  district: '',
+  state: '',
+  phoneNumber: '',
+  preferredLanguage: 'en',
+  onboardingStatus: 'INCOMPLETE',
+  onboardingStep: 1,
+  profileCompletion: 25,
+  isDemoAccount: false,
+  demoDatasetVersion: '',
+  uidLabel: 'UID-3041',
+  initialLots: [],
+});
+
+// Seeded Demo Village Agent Account
+seedUser({
+  id: 'USR-DEMO-AGENT',
+  email: 'agent.khandwa@kisan-spo.in',
+  plainKeyForDevSeed: `${devKeyPrefix}2026`,
+  name: 'Dr. S. R. Raman (Agent #402)',
+  nameHi: 'डॉ. एस. आर. रमन (आढ़तिया साथी)',
+  role: 'agent',
+  villageOrOrg: 'APMC Khandwa Central Hub',
+  village: 'Khandwa Hub',
+  district: 'Khandwa',
+  state: 'Madhya Pradesh',
+  phoneNumber: '+91 98930-40200',
+  preferredLanguage: 'en',
+  onboardingStatus: 'COMPLETED',
+  onboardingStep: 4,
+  profileCompletion: 100,
+  isDemoAccount: true,
+  demoDatasetVersion: 'v2.4-demo',
+  uidLabel: 'DEMO-AGENT-402',
+});
+
+// Seeded Demo Institutional Buyer Account
+seedUser({
+  id: 'USR-DEMO-BUYER',
+  email: 'procurement@itc-agri.in',
+  plainKeyForDevSeed: `${devKeyPrefix}2026`,
+  name: 'ITC Agri Procurement Desk',
+  nameHi: 'आईटीसी एग्री खरीद डेस्क',
+  role: 'buyer',
+  villageOrOrg: 'Indore Processing Mill Hub',
+  village: 'Sanwer Industrial Area',
+  district: 'Indore',
+  state: 'Madhya Pradesh',
+  phoneNumber: '+91 731-4029910',
+  preferredLanguage: 'en',
+  onboardingStatus: 'COMPLETED',
+  onboardingStep: 4,
+  profileCompletion: 100,
+  isDemoAccount: true,
+  demoDatasetVersion: 'v2.4-demo',
+  uidLabel: 'DEMO-CORP-ITC',
+});
+
+// Dedicated Administrator Account
+seedUser({
+  id: 'USR-ADMIN-01',
+  email: (process.env.ADMIN_EMAIL || 'registrar.admin@kisan-spo.org.in').toLowerCase(),
+  plainKeyForDevSeed: `${devKeyPrefix}Admin#2026`,
+  name: 'Chief Mandi Registrar (Admin)',
+  nameHi: 'मुख्य मंडी रजिस्ट्रार (प्रशासक)',
+  role: 'admin',
+  villageOrOrg: 'MP State AgriStack Directorate',
+  village: 'Bhopal Directorate',
+  district: 'Bhopal',
+  state: 'Madhya Pradesh',
+  phoneNumber: '+91 755-2550104',
+  preferredLanguage: 'en',
+  onboardingStatus: 'COMPLETED',
+  onboardingStep: 4,
+  profileCompletion: 100,
+  isDemoAccount: false,
+  demoDatasetVersion: '',
+  uidLabel: 'REGISTRAR-01',
+});
 
 interface SessionData {
   tokenId: string;
@@ -177,13 +372,13 @@ const auditLogs: AuditLogEntry[] = [
     actorRole: 'farmer',
     action: 'PHI_CHEMICAL_BLOCK_TRIGGERED',
     target: 'Field Specimen #0942 (8 Days to Harvest)',
-    reason: 'Statutory Pre-Harvest Interval blocked synthetic fungicide application.',
+    reason:
+      'Statutory Pre-Harvest Interval blocked synthetic fungicide application.',
     status: 'WARNING',
   },
 ];
 
-// Lot verification overrides managed on the server
-const serverLotStatusOverrides: Record<
+let serverLotStatusOverrides: Record<
   string,
   { status: string; updatedBy: string; reason: string; updatedAt: string }
 > = {};
@@ -191,7 +386,7 @@ const serverLotStatusOverrides: Record<
 function createSignedToken(email: string): string {
   const tokenId = crypto.randomBytes(24).toString('hex');
   const now = Date.now();
-  const expiresAt = now + 1000 * 60 * 60 * 12; // 12 hours
+  const expiresAt = now + 1000 * 60 * 60 * 12;
   activeSessions.set(tokenId, { tokenId, email, issuedAt: now, expiresAt });
 
   const payload = `${tokenId}.${email}.${expiresAt}`;
@@ -247,10 +442,21 @@ function sanitizeUser(u: ServerUserRecord) {
     nameHi: u.nameHi,
     role: u.role,
     villageOrOrg: u.villageOrOrg,
+    village: u.village,
+    district: u.district,
+    state: u.state,
+    phoneNumber: u.phoneNumber,
+    preferredLanguage: u.preferredLanguage,
+    onboardingStatus: u.onboardingStatus,
+    onboardingStep: u.onboardingStep,
+    profileCompletion: u.profileCompletion,
+    isDemoAccount: u.isDemoAccount,
+    demoDatasetVersion: u.demoDatasetVersion,
     uidLabel: u.uidLabel,
     emailVerified: u.emailVerified,
     active: u.active,
     createdAt: u.createdAt,
+    updatedAt: u.updatedAt,
     lastLoginAt: u.lastLoginAt,
   };
 }
@@ -296,6 +502,7 @@ async function startServer() {
     res.json({
       authenticated: true,
       user: sanitizeUser(user),
+      personalLots: userCropLotsMap.get(user.email) || [],
       devDemoMode: isDevDemoMode,
       lotStatusOverrides: serverLotStatusOverrides,
     });
@@ -303,8 +510,23 @@ async function startServer() {
 
   // 1b. Synchronize Firebase Google Sign-In session with Server RBAC
   app.post('/api/auth/firebase-sync', (req: Request, res: Response) => {
-    const { uid, email, displayName, role, villageOrOrg, emailVerified } =
-      req.body || {};
+    const {
+      uid,
+      email,
+      displayName,
+      role,
+      villageOrOrg,
+      village,
+      district,
+      state,
+      phoneNumber,
+      preferredLanguage,
+      onboardingStatus,
+      onboardingStep,
+      profileCompletion,
+      emailVerified,
+    } = req.body || {};
+
     if (!uid || !email || typeof email !== 'string') {
       res.status(400).json({
         error: 'Valid Firebase UID and email are required for session sync.',
@@ -325,28 +547,72 @@ async function startServer() {
       : 'farmer';
 
     if (!user) {
-      const { salt, hash } = hashPassword(crypto.randomBytes(24).toString('hex'));
+      const { salt, hash } = hashPassword(
+        crypto.randomBytes(24).toString('hex')
+      );
       user = {
         id: String(uid).slice(0, 28),
         email: normalizedEmail,
         name: String(displayName || normalizedEmail.split('@')[0]).trim(),
         nameHi: String(displayName || normalizedEmail.split('@')[0]).trim(),
         role: safeRole,
-        villageOrOrg: String(villageOrOrg || 'Khandwa Cluster').trim(),
+        villageOrOrg: String(villageOrOrg || 'Unassigned Workspace').trim(),
+        village: String(village || '').trim(),
+        district: String(district || '').trim(),
+        state: String(state || '').trim(),
+        phoneNumber: String(phoneNumber || '').trim(),
+        preferredLanguage: preferredLanguage === 'hi' ? 'hi' : 'en',
+        onboardingStatus:
+          onboardingStatus === 'COMPLETED' || onboardingStatus === 'SKIPPED'
+            ? onboardingStatus
+            : isBootstrappedAdmin
+            ? 'COMPLETED'
+            : 'INCOMPLETE',
+        onboardingStep:
+          typeof onboardingStep === 'number'
+            ? Math.max(1, Math.min(4, onboardingStep))
+            : isBootstrappedAdmin
+            ? 4
+            : 1,
+        profileCompletion:
+          typeof profileCompletion === 'number'
+            ? Math.max(0, Math.min(100, profileCompletion))
+            : isBootstrappedAdmin
+            ? 100
+            : 25,
+        isDemoAccount: false,
+        demoDatasetVersion: '',
         uidLabel: `FB-${String(uid).slice(0, 6).toUpperCase()}`,
         passwordSalt: salt,
         passwordHash: hash,
         emailVerified: Boolean(emailVerified),
         active: true,
         createdAt: 'Just now (Firebase Auth)',
+        updatedAt: 'Just now',
         lastLoginAt: 'Just now',
       };
       usersMap.set(normalizedEmail, user);
+      if (!userCropLotsMap.has(normalizedEmail)) {
+        userCropLotsMap.set(normalizedEmail, []);
+      }
     } else {
       user.lastLoginAt = 'Just now';
       user.emailVerified = Boolean(emailVerified) || user.emailVerified;
       if (isBootstrappedAdmin) {
         user.role = 'admin';
+      }
+      if (
+        onboardingStatus === 'COMPLETED' ||
+        onboardingStatus === 'SKIPPED' ||
+        onboardingStatus === 'INCOMPLETE'
+      ) {
+        user.onboardingStatus = onboardingStatus;
+      }
+      if (typeof onboardingStep === 'number') {
+        user.onboardingStep = Math.max(1, Math.min(4, onboardingStep));
+      }
+      if (typeof profileCompletion === 'number') {
+        user.profileCompletion = Math.max(0, Math.min(100, profileCompletion));
       }
     }
 
@@ -371,6 +637,7 @@ async function startServer() {
     res.json({
       token,
       user: sanitizeUser(user),
+      personalLots: userCropLotsMap.get(user.email) || [],
       devDemoMode: isDevDemoMode,
     });
   });
@@ -378,7 +645,12 @@ async function startServer() {
   // 2. Standard Login
   app.post('/api/auth/login', (req: Request, res: Response) => {
     const { email, password } = req.body || {};
-    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
+    if (
+      !email ||
+      !password ||
+      typeof email !== 'string' ||
+      typeof password !== 'string'
+    ) {
       res.status(400).json({
         error: 'Please enter both your registered email address and password.',
       });
@@ -387,7 +659,10 @@ async function startServer() {
 
     const normalizedEmail = email.trim().toLowerCase();
     const user = usersMap.get(normalizedEmail);
-    if (!user || !verifyPassword(password, user.passwordSalt, user.passwordHash)) {
+    if (
+      !user ||
+      !verifyPassword(password, user.passwordSalt, user.passwordHash)
+    ) {
       recordAudit(
         normalizedEmail,
         'unauthenticated',
@@ -425,11 +700,12 @@ async function startServer() {
     res.json({
       token,
       user: sanitizeUser(user),
+      personalLots: userCropLotsMap.get(user.email) || [],
       devDemoMode: isDevDemoMode,
     });
   });
 
-  // 3. User Registration (Blocks Admin Self-Registration)
+  // 3. User Registration (Creates Individual Profile with Incomplete Onboarding & Empty Personal Workspace)
   app.post('/api/auth/register', (req: Request, res: Response) => {
     const { email, password, name, role, villageOrOrg } = req.body || {};
     if (!email || !password || !name) {
@@ -446,7 +722,6 @@ async function startServer() {
       return;
     }
 
-    // Security check: Reject self-registration as admin
     if (role === 'admin') {
       recordAudit(
         String(email),
@@ -475,23 +750,36 @@ async function startServer() {
     }
 
     const { salt, hash } = hashPassword(String(password));
+    const trimmedVillage = String(villageOrOrg || '').trim();
     const newUser: ServerUserRecord = {
       id: `USR-${100 + usersMap.size + 1}`,
       email: normalizedEmail,
       name: String(name).trim(),
       nameHi: String(name).trim(),
       role: allowedRole,
-      villageOrOrg: String(villageOrOrg || 'Khandwa Cluster').trim(),
+      villageOrOrg: trimmedVillage || 'Unassigned Workspace',
+      village: trimmedVillage,
+      district: '',
+      state: '',
+      phoneNumber: '',
+      preferredLanguage: 'en',
+      onboardingStatus: 'INCOMPLETE',
+      onboardingStep: 1,
+      profileCompletion: 25,
+      isDemoAccount: false,
+      demoDatasetVersion: '',
       uidLabel: `UID-${Math.floor(1000 + Math.random() * 9000)}`,
       passwordSalt: salt,
       passwordHash: hash,
       emailVerified: false,
       active: true,
       createdAt: 'Just now',
+      updatedAt: 'Just now',
       lastLoginAt: 'Just now',
     };
 
     usersMap.set(normalizedEmail, newUser);
+    userCropLotsMap.set(normalizedEmail, []);
     const token = createSignedToken(newUser.email);
 
     recordAudit(
@@ -499,14 +787,220 @@ async function startServer() {
       newUser.role,
       'USER_REGISTERED',
       `Assigned default role: ${newUser.role}`,
-      'New user account created.',
+      'New individual user account created with fresh onboarding state.',
       'SUCCESS'
     );
 
     res.status(201).json({
       token,
       user: sanitizeUser(newUser),
+      personalLots: [],
       devDemoMode: isDevDemoMode,
+    });
+  });
+
+  // 3b. Update Authenticated User Profile & Onboarding Progress
+  app.put('/api/profile', (req: Request, res: Response) => {
+    const token = extractToken(req);
+    const user = verifySignedToken(token);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+
+    const {
+      name,
+      preferredLanguage,
+      phoneNumber,
+      role,
+      village,
+      district,
+      state,
+      onboardingStatus,
+      onboardingStep,
+      profileCompletion,
+    } = req.body || {};
+
+    if (role === 'admin' && user.role !== 'admin') {
+      res.status(403).json({
+        error: 'Security Violation: Cannot self-assign Administrator role.',
+      });
+      return;
+    }
+
+    if (typeof name === 'string' && name.trim().length > 0) {
+      user.name = name.trim().slice(0, 120);
+      user.nameHi = name.trim().slice(0, 120);
+    }
+    if (preferredLanguage === 'en' || preferredLanguage === 'hi') {
+      user.preferredLanguage = preferredLanguage;
+    }
+    if (typeof phoneNumber === 'string') {
+      user.phoneNumber = phoneNumber.trim().slice(0, 24);
+    }
+    if (
+      user.role !== 'admin' &&
+      (role === 'farmer' || role === 'agent' || role === 'buyer')
+    ) {
+      user.role = role;
+    }
+    if (typeof village === 'string') {
+      user.village = village.trim().slice(0, 80);
+    }
+    if (typeof district === 'string') {
+      user.district = district.trim().slice(0, 80);
+    }
+    if (typeof state === 'string') {
+      user.state = state.trim().slice(0, 80);
+    }
+
+    const parts = [user.village, user.district, user.state].filter(Boolean);
+    if (parts.length > 0) {
+      user.villageOrOrg = parts.join(', ').slice(0, 120);
+    }
+
+    if (
+      onboardingStatus === 'INCOMPLETE' ||
+      onboardingStatus === 'COMPLETED' ||
+      onboardingStatus === 'SKIPPED'
+    ) {
+      user.onboardingStatus = onboardingStatus;
+    }
+    if (typeof onboardingStep === 'number') {
+      user.onboardingStep = Math.max(1, Math.min(4, Math.round(onboardingStep)));
+    }
+    if (typeof profileCompletion === 'number') {
+      user.profileCompletion = Math.max(
+        0,
+        Math.min(100, Math.round(profileCompletion))
+      );
+    }
+
+    user.updatedAt = 'Just now';
+
+    recordAudit(
+      user.email,
+      user.role,
+      'PROFILE_UPDATED',
+      `Step ${user.onboardingStep} (${user.onboardingStatus})`,
+      `Profile updated (${user.profileCompletion}% complete).`,
+      'SUCCESS'
+    );
+
+    res.json({
+      user: sanitizeUser(user),
+      personalLots: userCropLotsMap.get(user.email) || [],
+    });
+  });
+
+  // 3c. Create a Personal Crop Lot Scoped to the Authenticated User
+  app.post('/api/profile/crops', (req: Request, res: Response) => {
+    const token = extractToken(req);
+    const user = verifySignedToken(token);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+
+    const { cropName, variety, quantityQuintals, surveyNumber, harvestDate } =
+      req.body || {};
+
+    if (!cropName || typeof cropName !== 'string' || !cropName.trim()) {
+      res.status(400).json({ error: 'Crop name is required.' });
+      return;
+    }
+
+    const qty = Math.max(1, Math.min(10000, Number(quantityQuintals) || 20));
+    const existingLots = userCropLotsMap.get(user.email) || [];
+    const seq = existingLots.length + 1;
+    const lotId = `KS-USER-${user.id.replace(/[^a-zA-Z0-9]/g, '')}-${100 + seq}`;
+    const shortCode = `#KS-${100 + seq}`;
+    const hash = crypto
+      .createHash('sha256')
+      .update(`${lotId}-${user.email}-${Date.now()}`)
+      .digest('hex');
+
+    const newLot: ServerCropLotRecord = {
+      id: lotId,
+      shortCode,
+      farmerId: user.id,
+      farmerName: user.name,
+      farmerNameHi: user.nameHi,
+      cropName: cropName.trim().slice(0, 80),
+      cropNameHi: cropName.trim().slice(0, 80),
+      variety: String(variety || 'Standard FAQ Grade').trim().slice(0, 80),
+      varietyHi: String(variety || 'मानक ग्रेड').trim().slice(0, 80),
+      grade: 'Grade A (Farmer Declared)',
+      quantityQuintals: qty,
+      harvestDate: String(harvestDate || 'Oct 2026').trim().slice(0, 40),
+      plotAreaHectares: Number((qty * 0.08).toFixed(2)),
+      surveyNumber: String(surveyNumber || user.village || 'Personal Farm Plot')
+        .trim()
+        .slice(0, 60),
+      verificationStatus: 'FARMER_DECLARED',
+      evidenceIds: [`EV-${lotId}`],
+      evidence: {
+        id: `EV-${lotId}`,
+        labName: 'Farmer Self-Declaration (Pending FPO / NABL Verification)',
+        certificateNumber: `DECL-${100 + seq}-2026`,
+        testedDate: 'Just now',
+        mrlStatus: 'SELF_DECLARED',
+        sha256Hash: hash,
+        moisturePercent: 11.2,
+        foreignMatterPercent: 0.9,
+      },
+      mandiPricePerQuintal: 1820,
+      directBuyerPricePerQuintal: 2150,
+    };
+
+    const updatedLots = [newLot, ...existingLots];
+    userCropLotsMap.set(user.email, updatedLots);
+
+    recordAudit(
+      user.email,
+      user.role,
+      'PERSONAL_CROP_ADDED',
+      `${newLot.id} (${newLot.cropName})`,
+      `Added ${qty} Quintals of ${newLot.cropName} to personal workspace.`,
+      'SUCCESS'
+    );
+
+    res.status(201).json({
+      lot: newLot,
+      personalLots: updatedLots,
+    });
+  });
+
+  // 3d. Safe Reset of Demo Dataset Only (Does NOT affect real user accounts or personal lots)
+  app.post('/api/demo/reset', (req: Request, res: Response) => {
+    const token = extractToken(req);
+    const user = verifySignedToken(token);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+
+    if (!user.isDemoAccount && user.role !== 'admin') {
+      res.status(403).json({
+        error: 'Reset Demo Data is only available for Demo Accounts.',
+      });
+      return;
+    }
+
+    serverLotStatusOverrides = {};
+    recordAudit(
+      user.email,
+      user.role,
+      'DEMO_DATASET_RESET',
+      'Demo Dataset v2.4-demo',
+      'Reset demonstration lot overrides and sample workflow states to baseline.',
+      'SUCCESS'
+    );
+
+    res.json({
+      success: true,
+      message:
+        'Demo dataset has been reset to its default baseline without affecting any real user accounts.',
     });
   });
 
@@ -522,7 +1016,10 @@ async function startServer() {
 
     const normalizedEmail = String(email).trim().toLowerCase();
     const user = usersMap.get(normalizedEmail);
-    if (!user || !verifyPassword(String(password), user.passwordSalt, user.passwordHash)) {
+    if (
+      !user ||
+      !verifyPassword(String(password), user.passwordSalt, user.passwordHash)
+    ) {
       recordAudit(
         normalizedEmail,
         'unknown',
@@ -566,6 +1063,7 @@ async function startServer() {
     res.json({
       token,
       user: sanitizeUser(user),
+      personalLots: userCropLotsMap.get(user.email) || [],
       devDemoMode: isDevDemoMode,
     });
   });
@@ -659,7 +1157,8 @@ async function startServer() {
         'DENIED'
       );
       res.status(403).json({
-        error: 'Forbidden: Administrative privileges are required for this operation.',
+        error:
+          'Forbidden: Administrative privileges are required for this operation.',
       });
       return;
     }
@@ -675,9 +1174,8 @@ async function startServer() {
       auditLogs,
       lotStatusOverrides: serverLotStatusOverrides,
       systemStatus: {
-        authProvider: isDevDemoMode
-          ? 'Express Scrypt + HMAC Session Engine (Local Dev Mode)'
-          : 'Production Configured Auth',
+        authProvider:
+          'Firebase Auth (Google Sign-In) + Express Scrypt Session Engine',
         agristackNode: 'MP-KHD-0402 (Connected Sample)',
         weighbridgeSerial: 'RS232 Terminal #104 (Simulated)',
         escrowGateway: 'Review-Only Demonstration Mode (No Live Bank Keys)',
@@ -690,13 +1188,15 @@ async function startServer() {
     '/api/admin/users/:userId/role',
     requireAdmin,
     (req: Request, res: Response) => {
-      const adminUser = (req as Request & { adminUser: ServerUserRecord }).adminUser;
+      const adminUser = (req as Request & { adminUser: ServerUserRecord })
+        .adminUser;
       const { userId } = req.params;
       const { role, reason } = req.body || {};
 
       if (!reason || String(reason).trim().length < 5) {
         res.status(400).json({
-          error: 'A documented audit reason (min 5 characters) is required for role changes.',
+          error:
+            'A documented audit reason (min 5 characters) is required for role changes.',
         });
         return;
       }
@@ -707,7 +1207,9 @@ async function startServer() {
         return;
       }
 
-      const targetUser = Array.from(usersMap.values()).find((u) => u.id === userId);
+      const targetUser = Array.from(usersMap.values()).find(
+        (u) => u.id === userId
+      );
       if (!targetUser) {
         res.status(404).json({ error: 'User record not found.' });
         return;
@@ -737,18 +1239,22 @@ async function startServer() {
     '/api/admin/users/:userId/status',
     requireAdmin,
     (req: Request, res: Response) => {
-      const adminUser = (req as Request & { adminUser: ServerUserRecord }).adminUser;
+      const adminUser = (req as Request & { adminUser: ServerUserRecord })
+        .adminUser;
       const { userId } = req.params;
       const { active, reason } = req.body || {};
 
       if (!reason || String(reason).trim().length < 5) {
         res.status(400).json({
-          error: 'An audit reason is required to activate or deactivate an account.',
+          error:
+            'An audit reason is required to activate or deactivate an account.',
         });
         return;
       }
 
-      const targetUser = Array.from(usersMap.values()).find((u) => u.id === userId);
+      const targetUser = Array.from(usersMap.values()).find(
+        (u) => u.id === userId
+      );
       if (!targetUser) {
         res.status(404).json({ error: 'User not found.' });
         return;
@@ -778,12 +1284,13 @@ async function startServer() {
     }
   );
 
-  // 11. Admin: Verification Review Approval / Rejection with Mandatory Audit Reason
+  // 11. Admin: Verification Review Approval / Rejection
   app.post(
     '/api/admin/lots/:lotId/verification',
     requireAdmin,
     (req: Request, res: Response) => {
-      const adminUser = (req as Request & { adminUser: ServerUserRecord }).adminUser;
+      const adminUser = (req as Request & { adminUser: ServerUserRecord })
+        .adminUser;
       const { lotId } = req.params;
       const { status, reason } = req.body || {};
 
@@ -835,7 +1342,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Kisan-SPO 2.0 server running on http://0.0.0.0:${PORT}`);
+    console.log(`Kisan-SPO server running on http://0.0.0.0:${PORT}`);
   });
 }
 

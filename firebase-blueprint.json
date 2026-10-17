@@ -2,12 +2,12 @@
   "entities": {
     "UserProfile": {
       "title": "UserProfile",
-      "description": "Operational Kisan-SPO profile for an authenticated farmer, village agent, or institutional buyer (PII isolated in private subcollection).",
+      "description": "Personalized Kisan-SPO user profile and onboarding state (PII isolated in private subcollection).",
       "type": "object",
       "properties": {
         "uid": {
           "type": "string",
-          "description": "Firebase Auth UID of the user",
+          "description": "Authenticated user UID",
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
@@ -20,19 +20,60 @@
         },
         "role": {
           "type": "string",
-          "description": "Operational role in Kisan-SPO",
+          "description": "Selected operational workspace role preference",
           "enum": ["farmer", "agent", "buyer"]
         },
         "villageOrOrg": {
           "type": "string",
-          "description": "Village hub or organization name",
+          "description": "Combined village or organization display label",
           "minLength": 1,
           "maxLength": 120
+        },
+        "village": {
+          "type": "string",
+          "description": "Village name (optional, empty string if skipped)",
+          "minLength": 0,
+          "maxLength": 80
+        },
+        "district": {
+          "type": "string",
+          "description": "District name (optional, empty string if skipped)",
+          "minLength": 0,
+          "maxLength": 80
+        },
+        "state": {
+          "type": "string",
+          "description": "State name (optional, empty string if skipped)",
+          "minLength": 0,
+          "maxLength": 80
         },
         "preferredLanguage": {
           "type": "string",
           "description": "Bilingual UI preference",
           "enum": ["en", "hi"]
+        },
+        "onboardingStatus": {
+          "type": "string",
+          "description": "Whether first-time onboarding is incomplete, completed, or skipped",
+          "enum": ["INCOMPLETE", "COMPLETED", "SKIPPED"]
+        },
+        "onboardingStep": {
+          "type": "number",
+          "description": "Current onboarding wizard step (1 to 4)"
+        },
+        "profileCompletion": {
+          "type": "number",
+          "description": "Profile setup completion percentage (0 to 100)"
+        },
+        "isDemoAccount": {
+          "type": "boolean",
+          "description": "Whether this profile belongs to the isolated demonstration dataset"
+        },
+        "demoDatasetVersion": {
+          "type": "string",
+          "description": "Version tag for demonstration dataset",
+          "minLength": 0,
+          "maxLength": 32
         },
         "createdAt": {
           "type": "string",
@@ -50,19 +91,27 @@
         "displayName",
         "role",
         "villageOrOrg",
+        "village",
+        "district",
+        "state",
         "preferredLanguage",
+        "onboardingStatus",
+        "onboardingStep",
+        "profileCompletion",
+        "isDemoAccount",
+        "demoDatasetVersion",
         "createdAt",
         "updatedAt"
       ]
     },
     "UserPrivateInfo": {
       "title": "UserPrivateInfo",
-      "description": "Isolated PII record containing user email and login audit metadata.",
+      "description": "Isolated PII record containing user email, optional phone number, and verification metadata.",
       "type": "object",
       "properties": {
         "uid": {
           "type": "string",
-          "description": "Firebase Auth UID of the owner",
+          "description": "Authenticated user UID",
           "minLength": 1,
           "maxLength": 128,
           "pattern": "^[a-zA-Z0-9_\\-]+$"
@@ -74,21 +123,27 @@
           "minLength": 3,
           "maxLength": 254
         },
+        "phoneNumber": {
+          "type": "string",
+          "description": "Optional phone number supplied during onboarding or profile edit",
+          "minLength": 0,
+          "maxLength": 24
+        },
         "emailVerified": {
           "type": "boolean",
-          "description": "Whether the Google/Firebase email is verified"
+          "description": "Whether the email is verified by the identity provider"
         },
         "updatedAt": {
           "type": "string",
           "format": "date-time",
-          "description": "Server timestamp of the latest sign-in sync"
+          "description": "Server timestamp of the latest sync"
         }
       },
-      "required": ["uid", "email", "emailVerified", "updatedAt"]
+      "required": ["uid", "email", "phoneNumber", "emailVerified", "updatedAt"]
     },
     "CropLotRecord": {
       "title": "CropLotRecord",
-      "description": "Persistent Digital Crop Passport and verification state for an agricultural lot.",
+      "description": "Persistent Digital Crop Passport and verification state for an agricultural lot scoped to its owner.",
       "type": "object",
       "properties": {
         "lotId": {
@@ -120,6 +175,12 @@
         "cropName": {
           "type": "string",
           "description": "Commodity name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "variety": {
+          "type": "string",
+          "description": "Crop variety name",
           "minLength": 1,
           "maxLength": 120
         },
@@ -161,6 +222,7 @@
         "shortCode",
         "farmerName",
         "cropName",
+        "variety",
         "quantityQuintals",
         "verificationStatus",
         "sha256Hash",
@@ -248,15 +310,15 @@
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserProfile" },
-      "description": "Operational user profile documents keyed by Firebase Auth UID"
+      "description": "Personalized user profile and onboarding documents keyed by Firebase Auth UID"
     },
     "/users/{userId}/private/{docId}": {
       "schema": { "$ref": "#/entities/UserPrivateInfo" },
-      "description": "Isolated PII subcollection storing email and verification metadata"
+      "description": "Isolated PII subcollection storing email, optional phone number, and verification metadata"
     },
     "/cropLots/{lotId}": {
       "schema": { "$ref": "#/entities/CropLotRecord" },
-      "description": "Persisted Digital Crop Passport and verification state documents"
+      "description": "User-scoped Digital Crop Passport and verification state documents"
     },
     "/auditLogs/{logId}": {
       "schema": { "$ref": "#/entities/AuditEvent" },

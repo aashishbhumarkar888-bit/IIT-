@@ -2,6 +2,8 @@ export type UserRole = 'farmer' | 'agent' | 'buyer';
 
 export type Language = 'en' | 'hi';
 
+export type OnboardingStatus = 'INCOMPLETE' | 'COMPLETED' | 'SKIPPED';
+
 export type VerificationStatus =
   | 'INDEPENDENTLY_VERIFIED'
   | 'LABORATORY_TESTED'

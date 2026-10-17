@@ -1,24 +1,28 @@
-# Kisan-SPO 2.0 — Authentication & Authorization Setup Guide
+# Kisan-SPO — Authentication, Onboarding & Demo Account Guide
 
-## Overview
+## 1. Three Distinct User Experiences
 
-Kisan-SPO 2.0 enforces a **login-first architecture** with server-validated session tokens and role-based access control (RBAC) handled by the Express backend (`server.ts`).
+Kisan-SPO distinguishes between three authenticated account states:
 
-## 1. Environment Variables (`.env`)
+1. **Experience A — Brand-New Registered User (`onboardingStatus: 'INCOMPLETE'`)**
+   - Receives a clean, personal profile associated with their unique UID (`Firebase Auth` or server session).
+   - Guided through the 4-Step Onboarding Wizard (`/onboarding`) with saved step-by-step progress.
+   - Lands on the **Simplified Personal Workspace** on `/dashboard` with genuine empty states (`My Crops`, `Buyer Offers`, `Payments`) and a primary action (`Add your first crop` / `Set up your first pickup` / `Explore available crop lots`).
+   - Does **not** display another farmer's private crops, pickups, or global escrow totals as personal user data.
 
-Copy `.env.example` to `.env` and configure the following server-side variables:
+2. **Experience B — Seeded Demo User (`isDemoAccount: true`)**
+   - Dedicated demonstration farmer account: **Ramesh Patel** (`ramesh.patel@kisan-spo.in`).
+   - Pre-populated with coherent, isolated demonstration data (`KS-MP-2025-089`, `KS-2025-0124`, `KS-MP-2025-104`, buyer bids, weighbridge telemetry, and 50-50 split escrow milestones).
+   - Clearly labeled with a **Demo Profile • Sample Data** badge and banner across views, with a **Reset Demo Data** action that safely resets only the demo dataset.
 
-- `KISAN_SESSION_SECRET`: High-entropy secret string (minimum 32 bytes) used to sign and verify HMAC-SHA256 session tokens.
-- `ADMIN_EMAIL`: Authorized administrator email address for `/admin` access.
-- `ADMIN_PASSWORD_HASH`: Scrypt password hash (`salt:derivedKeyHex`) for the production administrator account.
+3. **Experience C — Returning Authenticated User (`onboardingStatus: 'COMPLETED'`, `isDemoAccount: false`)**
+   - Restores the user's saved display name, role preference, preferred language, location, and personal crop lots from Cloud Firestore (`/users/{uid}` and `/cropLots`) and backend storage without repeating the onboarding wizard.
 
-## 2. Security & Role Architecture
+## 2. Authentication Methods
 
-1. **No Client-Side Role Escalation**:
-   - Public registration (`POST /api/auth/register`) only permits standard operational roles (`farmer`, `agent`, `buyer`). Any request attempting to self-assign `admin` is rejected with `403 Forbidden` by the server.
-2. **Administrator Shortcut (`Ctrl + Shift + A` / `Cmd + Shift + A`)**:
-   - Pressing `Ctrl + Shift + A` (or `Cmd + Shift + A` on macOS) opens the Administrator Authentication Dialog.
-   - The keyboard shortcut is purely a UI navigation trigger and **never** grants administrative privileges on its own.
-   - All `/api/admin/*` endpoints verify the signed Bearer token and enforce `user.role === 'admin'` on the server.
-3. **Local Development Mode**:
-   - When `ADMIN_PASSWORD_HASH` is not configured in the environment, the backend initializes clearly labeled **Development Mode Demo Accounts** in memory so evaluators can test Farmer, Village Agent, Institutional Buyer, and Administrator workflows locally.
+- **Primary Production Auth**: **Google Sign-In with Firebase Authentication** (`signInWithPopup`) backed by **Cloud Firestore** (`/users/{userId}`, isolated PII vault `/users/{userId}/private/info`, `/cropLots/{lotId}`, `/auditLogs/{logId}`).
+- **Local Development / Evaluation Accounts**: When running in local development mode (`devDemoMode: true`), quick-fill buttons on `/login` allow testing all three experiences:
+  - **Demo Farmer (Experience B)**: `ramesh.patel@kisan-spo.in`
+  - **Returning Farmer (Experience C)**: `suresh.kumar@kisan-spo.in` (has 1 saved personal Soybean lot `#KS-0124`)
+  - **Fresh New User (Experience A)**: `anita.verma@kisan-spo.in` (incomplete onboarding, 0 personal crops)
+  - **Administrator Console (`/admin`, `Ctrl + Shift + A`)**: `aashishbhumarkar888@gmail.com` (via Google Sign-In) or `registrar.admin@kisan-spo.org.in` in local dev mode.

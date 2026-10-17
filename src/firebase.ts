@@ -22,7 +22,13 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
-import { CropLot, Language, UserRole, VerificationStatus } from './types/kisan';
+import {
+  CropLot,
+  Language,
+  OnboardingStatus,
+  UserRole,
+  VerificationStatus,
+} from './types/kisan';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
@@ -99,7 +105,6 @@ export function handleFirestoreError(
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Defensive payload sanitization matching firebase-blueprint.json maxLength & pattern constraints
 function sanitizeId(raw: string): string {
   const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 128);
   return cleaned || 'default_id';
@@ -110,13 +115,26 @@ function sanitizeText(raw: string, maxLen: number, fallback: string): string {
   return trimmed.length > 0 ? trimmed : fallback;
 }
 
+function sanitizeOptionalText(raw: string | undefined, maxLen: number): string {
+  return (raw || '').trim().slice(0, maxLen);
+}
+
 export interface FirestoreUserProfileData {
   uid: string;
   displayName: string;
   role: UserRole;
   villageOrOrg: string;
+  village: string;
+  district: string;
+  state: string;
   preferredLanguage: Language;
+  onboardingStatus: OnboardingStatus;
+  onboardingStep: number;
+  profileCompletion: number;
+  isDemoAccount: boolean;
+  demoDatasetVersion: string;
   email: string;
+  phoneNumber: string;
   emailVerified: boolean;
   isAdmin: boolean;
 }
@@ -126,7 +144,7 @@ const BOOTSTRAPPED_ADMIN_EMAIL = 'aashishbhumarkar888@gmail.com';
 export async function ensureFirestoreUserProfile(
   fbUser: FirebaseUser,
   defaultRole: UserRole = 'farmer',
-  defaultVillageOrOrg: string = 'Khandwa Cluster'
+  defaultVillageOrOrg: string = ''
 ): Promise<FirestoreUserProfileData> {
   const uid = sanitizeId(fbUser.uid);
   const userDocPath = `users/${uid}`;
@@ -140,12 +158,21 @@ export async function ensureFirestoreUserProfile(
     120,
     'Kisan-SPO Member'
   );
-  let existingVillage = sanitizeText(
-    defaultVillageOrOrg,
+  let existingVillage = sanitizeOptionalText(defaultVillageOrOrg, 80);
+  let existingDistrict = '';
+  let existingState = '';
+  let existingVillageOrOrg = sanitizeText(
+    defaultVillageOrOrg || 'Unassigned Workspace',
     120,
-    'Khandwa Cluster'
+    'Unassigned Workspace'
   );
   let existingLang: Language = 'en';
+  let existingOnboardingStatus: OnboardingStatus = 'INCOMPLETE';
+  let existingOnboardingStep = 1;
+  let existingProfileCompletion = 25;
+  let existingIsDemoAccount = false;
+  let existingDemoVersion = '';
+  let existingPhoneNumber = '';
 
   try {
     const snap = await getDoc(userRef);
@@ -166,23 +193,55 @@ export async function ensureFirestoreUserProfile(
         );
       }
       if (typeof data.villageOrOrg === 'string' && data.villageOrOrg.trim()) {
-        existingVillage = sanitizeText(
+        existingVillageOrOrg = sanitizeText(
           data.villageOrOrg,
           120,
-          existingVillage
+          existingVillageOrOrg
         );
+      }
+      if (typeof data.village === 'string') {
+        existingVillage = sanitizeOptionalText(data.village, 80);
+      }
+      if (typeof data.district === 'string') {
+        existingDistrict = sanitizeOptionalText(data.district, 80);
+      }
+      if (typeof data.state === 'string') {
+        existingState = sanitizeOptionalText(data.state, 80);
       }
       if (data.preferredLanguage === 'en' || data.preferredLanguage === 'hi') {
         existingLang = data.preferredLanguage;
       }
+      if (
+        data.onboardingStatus === 'INCOMPLETE' ||
+        data.onboardingStatus === 'COMPLETED' ||
+        data.onboardingStatus === 'SKIPPED'
+      ) {
+        existingOnboardingStatus = data.onboardingStatus;
+      }
+      if (typeof data.onboardingStep === 'number') {
+        existingOnboardingStep = Math.max(
+          1,
+          Math.min(4, Math.round(data.onboardingStep))
+        );
+      }
+      if (typeof data.profileCompletion === 'number') {
+        existingProfileCompletion = Math.max(
+          0,
+          Math.min(100, Math.round(data.profileCompletion))
+        );
+      }
+      existingIsDemoAccount = Boolean(data.isDemoAccount);
+      existingDemoVersion = sanitizeOptionalText(data.demoDatasetVersion, 32);
 
-      // Update private PII login timestamp if verified
       if (fbUser.emailVerified && fbUser.email) {
         try {
           const privSnap = await getDoc(privateRef);
           if (privSnap.exists()) {
+            const pData = privSnap.data();
+            existingPhoneNumber = sanitizeOptionalText(pData.phoneNumber, 24);
             await updateDoc(privateRef, {
               email: sanitizeText(fbUser.email, 254, 'user@kisan-spo.in'),
+              phoneNumber: existingPhoneNumber,
               emailVerified: Boolean(fbUser.emailVerified),
               updatedAt: serverTimestamp(),
             });
@@ -190,6 +249,7 @@ export async function ensureFirestoreUserProfile(
             await setDoc(privateRef, {
               uid,
               email: sanitizeText(fbUser.email, 254, 'user@kisan-spo.in'),
+              phoneNumber: existingPhoneNumber,
               emailVerified: Boolean(fbUser.emailVerified),
               updatedAt: serverTimestamp(),
             });
@@ -199,14 +259,22 @@ export async function ensureFirestoreUserProfile(
         }
       }
     } else if (fbUser.emailVerified) {
-      // Atomic batch creation of /users/{uid} and /users/{uid}/private/info
+      // Idempotent atomic batch creation for brand-new account
       const batch = writeBatch(db);
       batch.set(userRef, {
         uid,
         displayName: existingDisplayName,
         role: existingRole,
-        villageOrOrg: existingVillage,
+        villageOrOrg: existingVillageOrOrg,
+        village: existingVillage,
+        district: existingDistrict,
+        state: existingState,
         preferredLanguage: existingLang,
+        onboardingStatus: existingOnboardingStatus,
+        onboardingStep: existingOnboardingStep,
+        profileCompletion: existingProfileCompletion,
+        isDemoAccount: false,
+        demoDatasetVersion: '',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -217,6 +285,7 @@ export async function ensureFirestoreUserProfile(
           254,
           'user@kisan-spo.in'
         ),
+        phoneNumber: '',
         emailVerified: Boolean(fbUser.emailVerified),
         updatedAt: serverTimestamp(),
       });
@@ -238,9 +307,18 @@ export async function ensureFirestoreUserProfile(
     uid,
     displayName: existingDisplayName,
     role: existingRole,
-    villageOrOrg: existingVillage,
+    villageOrOrg: existingVillageOrOrg,
+    village: existingVillage,
+    district: existingDistrict,
+    state: existingState,
     preferredLanguage: existingLang,
+    onboardingStatus: existingOnboardingStatus,
+    onboardingStep: existingOnboardingStep,
+    profileCompletion: existingProfileCompletion,
+    isDemoAccount: existingIsDemoAccount,
+    demoDatasetVersion: existingDemoVersion,
     email: fbUser.email || 'user@kisan-spo.in',
+    phoneNumber: existingPhoneNumber,
     emailVerified: Boolean(fbUser.emailVerified),
     isAdmin: isBootstrappedAdmin,
   };
@@ -248,7 +326,7 @@ export async function ensureFirestoreUserProfile(
 
 export async function signInWithGoogle(
   preferredRole: UserRole = 'farmer',
-  preferredVillageOrOrg: string = 'Khandwa Cluster'
+  preferredVillageOrOrg: string = ''
 ): Promise<FirestoreUserProfileData> {
   const credential = await signInWithPopup(auth, googleProvider);
   const profile = await ensureFirestoreUserProfile(
@@ -277,7 +355,14 @@ export async function updateFirestoreUserPreferences(
     displayName: string;
     role: UserRole;
     villageOrOrg: string;
+    village: string;
+    district: string;
+    state: string;
     preferredLanguage: Language;
+    onboardingStatus: OnboardingStatus;
+    onboardingStep: number;
+    profileCompletion: number;
+    phoneNumber: string;
   }>
 ): Promise<void> {
   const currentUser = auth.currentUser;
@@ -285,12 +370,40 @@ export async function updateFirestoreUserPreferences(
 
   const uid = sanitizeId(currentUser.uid);
   const userDocPath = `users/${uid}`;
+  const privateDocPath = `users/${uid}/private/info`;
   const userRef = doc(db, 'users', uid);
+  const privateRef = doc(db, 'users', uid, 'private', 'info');
 
   try {
     const snap = await getDoc(userRef);
     if (!snap.exists()) return;
     const current = snap.data();
+
+    const nextVillage =
+      updates.village !== undefined
+        ? sanitizeOptionalText(updates.village, 80)
+        : sanitizeOptionalText(current.village, 80);
+    const nextDistrict =
+      updates.district !== undefined
+        ? sanitizeOptionalText(updates.district, 80)
+        : sanitizeOptionalText(current.district, 80);
+    const nextState =
+      updates.state !== undefined
+        ? sanitizeOptionalText(updates.state, 80)
+        : sanitizeOptionalText(current.state, 80);
+
+    const computedLocationLabel = [nextVillage, nextDistrict, nextState]
+      .filter(Boolean)
+      .join(', ');
+
+    const nextVillageOrOrg = sanitizeText(
+      updates.villageOrOrg ||
+        computedLocationLabel ||
+        current.villageOrOrg ||
+        'Unassigned Workspace',
+      120,
+      'Unassigned Workspace'
+    );
 
     await updateDoc(userRef, {
       displayName: sanitizeText(
@@ -299,15 +412,46 @@ export async function updateFirestoreUserPreferences(
         'Kisan-SPO Member'
       ),
       role: updates.role ?? current.role ?? 'farmer',
-      villageOrOrg: sanitizeText(
-        updates.villageOrOrg ?? current.villageOrOrg,
-        120,
-        'Khandwa Cluster'
-      ),
+      villageOrOrg: nextVillageOrOrg,
+      village: nextVillage,
+      district: nextDistrict,
+      state: nextState,
       preferredLanguage:
         updates.preferredLanguage ?? current.preferredLanguage ?? 'en',
+      onboardingStatus:
+        updates.onboardingStatus ?? current.onboardingStatus ?? 'INCOMPLETE',
+      onboardingStep: Math.max(
+        1,
+        Math.min(
+          4,
+          Math.round(updates.onboardingStep ?? current.onboardingStep ?? 1)
+        )
+      ),
+      profileCompletion: Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(
+            updates.profileCompletion ?? current.profileCompletion ?? 25
+          )
+        )
+      ),
+      demoDatasetVersion: sanitizeOptionalText(current.demoDatasetVersion, 32),
       updatedAt: serverTimestamp(),
     });
+
+    if (updates.phoneNumber !== undefined && currentUser.email) {
+      try {
+        await updateDoc(privateRef, {
+          email: sanitizeText(currentUser.email, 254, 'user@kisan-spo.in'),
+          phoneNumber: sanitizeOptionalText(updates.phoneNumber, 24),
+          emailVerified: Boolean(currentUser.emailVerified),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, privateDocPath);
+      }
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, userDocPath);
   }
@@ -332,9 +476,10 @@ export async function saveCropLotToFirestore(
       await setDoc(lotRef, {
         lotId,
         ownerId: uid,
-        shortCode: sanitizeText(lot.shortCode, 32, '#KS-089'),
-        farmerName: sanitizeText(lot.farmerName, 120, 'Ramesh Patel'),
+        shortCode: sanitizeText(lot.shortCode, 32, '#KS-101'),
+        farmerName: sanitizeText(lot.farmerName, 120, 'Kisan-SPO Grower'),
         cropName: sanitizeText(lot.cropName, 120, 'Sharbati Wheat'),
+        variety: sanitizeText(lot.variety || 'Standard Grade', 120, 'Standard Grade'),
         quantityQuintals: Math.max(
           1,
           Math.min(100000, Number(lot.quantityQuintals) || 25)
@@ -350,6 +495,10 @@ export async function saveCropLotToFirestore(
       });
     } else {
       await updateDoc(lotRef, {
+        shortCode: sanitizeText(lot.shortCode, 32, '#KS-101'),
+        farmerName: sanitizeText(lot.farmerName, 120, 'Kisan-SPO Grower'),
+        cropName: sanitizeText(lot.cropName, 120, 'Sharbati Wheat'),
+        variety: sanitizeText(lot.variety || 'Standard Grade', 120, 'Standard Grade'),
         verificationStatus: statusToSave,
         quantityQuintals: Math.max(
           1,
@@ -400,7 +549,10 @@ export async function recordFirestoreAuditEvent(
 
 export function subscribeToUserCropLots(
   uid: string,
-  onLotsUpdated: (statusMap: Record<string, VerificationStatus>) => void
+  onLotsUpdated: (
+    statusMap: Record<string, VerificationStatus>,
+    personalLots: CropLot[]
+  ) => void
 ): () => void {
   const safeUid = sanitizeId(uid);
   const q = query(
@@ -411,13 +563,51 @@ export function subscribeToUserCropLots(
     q,
     (snapshot) => {
       const map: Record<string, VerificationStatus> = {};
+      const lots: CropLot[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
         if (data.lotId && data.verificationStatus) {
           map[data.lotId] = data.verificationStatus as VerificationStatus;
+          lots.push({
+            id: String(data.lotId),
+            shortCode: String(data.shortCode || '#KS-NEW'),
+            farmerId: safeUid,
+            farmerName: String(data.farmerName || 'Kisan-SPO Grower'),
+            farmerNameHi: String(data.farmerName || 'किसान'),
+            cropName: String(data.cropName || 'Sharbati Wheat'),
+            cropNameHi: String(data.cropName || 'फसल'),
+            variety: String(data.variety || 'Standard Grade'),
+            varietyHi: String(data.variety || 'मानक किस्म'),
+            grade: 'Grade A',
+            quantityQuintals: Number(data.quantityQuintals) || 20,
+            harvestDate: 'Oct 2026',
+            plotAreaHectares: 2.0,
+            surveyNumber: 'Personal Plot',
+            verificationStatus: data.verificationStatus as VerificationStatus,
+            evidenceIds: [`EV-${data.lotId}`],
+            evidence: {
+              id: `EV-${data.lotId}`,
+              labName: 'Farmer Declared / Pending Lab Audit',
+              certificateNumber: `PENDING-${String(data.lotId).slice(-4)}`,
+              testedDate: 'Oct 2026',
+              mrlStatus:
+                data.verificationStatus === 'INDEPENDENTLY_VERIFIED' ||
+                data.verificationStatus === 'LABORATORY_TESTED'
+                  ? 'ZERO_EXCEEDANCE'
+                  : 'SELF_DECLARED',
+              sha256Hash: String(
+                data.sha256Hash ||
+                  '8f94e2c01a74b8c3a9f02d11e7d53c29a4f8b6c1d3e90a12b4c6d8e0f1a23f91'
+              ),
+              moisturePercent: 11.2,
+              foreignMatterPercent: 0.8,
+            },
+            mandiPricePerQuintal: 1820,
+            directBuyerPricePerQuintal: 2150,
+          });
         }
       });
-      onLotsUpdated(map);
+      onLotsUpdated(map, lots);
     },
     (error) => {
       handleFirestoreError(error, OperationType.LIST, 'cropLots');
