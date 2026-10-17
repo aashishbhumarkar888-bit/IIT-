@@ -125,12 +125,53 @@ export interface FirestoreUserProfileData {
 
 const BOOTSTRAPPED_ADMIN_EMAIL = 'aashishbhumarkar888@gmail.com';
 
+const activeSnapshotUnsubscribers = new Set<() => void>();
+const inFlightProfilePromises = new Map<
+  string,
+  Promise<FirestoreUserProfileData>
+>();
+
+export function cleanupAllFirestoreSubscriptions(): void {
+  activeSnapshotUnsubscribers.forEach((unsub) => {
+    try {
+      unsub();
+    } catch {
+      // Ignore cleanup error
+    }
+  });
+  activeSnapshotUnsubscribers.clear();
+}
+
 export async function ensureFirestoreUserProfile(
   fbUser: FirebaseUser,
   defaultRole: UserRole = 'farmer',
   defaultVillageOrOrg: string = ''
 ): Promise<FirestoreUserProfileData> {
   const uid = sanitizeId(fbUser.uid);
+  const existingPromise = inFlightProfilePromises.get(uid);
+  if (existingPromise) {
+    return existingPromise;
+  }
+
+  const promise = ensureFirestoreUserProfileInternal(
+    fbUser,
+    uid,
+    defaultRole,
+    defaultVillageOrOrg
+  ).finally(() => {
+    inFlightProfilePromises.delete(uid);
+  });
+
+  inFlightProfilePromises.set(uid, promise);
+  return promise;
+}
+
+async function ensureFirestoreUserProfileInternal(
+  fbUser: FirebaseUser,
+  uid: string,
+  defaultRole: UserRole = 'farmer',
+  defaultVillageOrOrg: string = ''
+): Promise<FirestoreUserProfileData> {
   const userDocPath = `users/${uid}`;
   const privateDocPath = `users/${uid}/private/info`;
   const userRef = doc(db, 'users', uid);
@@ -329,6 +370,7 @@ export async function signInWithGoogle(
 }
 
 export async function signOutFromFirebase(): Promise<void> {
+  cleanupAllFirestoreSubscriptions();
   if (auth.currentUser) {
     await firebaseSignOut(auth);
   }
@@ -450,8 +492,9 @@ export async function saveCropLotToFirestore(
 
   const uid = sanitizeId(currentUser.uid);
   const lotId = sanitizeId(lot.id);
-  const lotDocPath = `cropLots/${lotId}`;
-  const lotRef = doc(db, 'cropLots', lotId);
+  const docId = sanitizeId(`${uid}_${lotId}`);
+  const lotDocPath = `cropLots/${docId}`;
+  const lotRef = doc(db, 'cropLots', docId);
   const statusToSave = newStatus || lot.verificationStatus;
 
   try {
@@ -539,11 +582,17 @@ export function subscribeToUserCropLots(
   ) => void
 ): () => void {
   const safeUid = sanitizeId(uid);
+  if (!auth.currentUser || sanitizeId(auth.currentUser.uid) !== safeUid) {
+    return () => {};
+  }
+
+  cleanupAllFirestoreSubscriptions();
+
   const q = query(
     collection(db, 'cropLots'),
     where('ownerId', '==', safeUid)
   );
-  return onSnapshot(
+  const rawUnsub = onSnapshot(
     q,
     (snapshot) => {
       const map: Record<string, VerificationStatus> = {};
@@ -594,7 +643,22 @@ export function subscribeToUserCropLots(
       onLotsUpdated(map, lots);
     },
     (error) => {
+      // Ignore listener teardown errors after sign-out or account switch
+      if (!auth.currentUser || sanitizeId(auth.currentUser.uid) !== safeUid) {
+        return;
+      }
       handleFirestoreError(error, OperationType.LIST, 'cropLots');
     }
   );
+
+  const wrappedUnsub = () => {
+    activeSnapshotUnsubscribers.delete(wrappedUnsub);
+    try {
+      rawUnsub();
+    } catch {
+      // Ignore
+    }
+  };
+  activeSnapshotUnsubscribers.add(wrappedUnsub);
+  return wrappedUnsub;
 }

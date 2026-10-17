@@ -13,6 +13,7 @@ import {
 } from '../data/kisanData';
 import {
   auth,
+  cleanupAllFirestoreSubscriptions,
   ensureFirestoreUserProfile,
   onAuthStateChanged,
   saveCropLotToFirestore,
@@ -349,6 +350,14 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (cancelled) return;
 
+      if (!fbUser) {
+        if (unsubscribeLots) {
+          unsubscribeLots();
+          unsubscribeLots = null;
+        }
+        cleanupAllFirestoreSubscriptions();
+      }
+
       if (fbUser) {
         try {
           const profile = await ensureFirestoreUserProfile(fbUser);
@@ -391,16 +400,18 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
             setAuthStatus('AUTHENTICATED');
 
             if (unsubscribeLots) unsubscribeLots();
-            unsubscribeLots = subscribeToUserCropLots(
-              profile.uid,
-              (lotMap, fbPersonalLots) => {
-                setStatusOverrides((prev) => ({ ...prev, ...lotMap }));
-                if (fbPersonalLots.length > 0) {
-                  setPersonalLots(fbPersonalLots);
-                  setSelectedLotId(fbPersonalLots[0].id);
+            if (auth.currentUser && auth.currentUser.uid === fbUser.uid) {
+              unsubscribeLots = subscribeToUserCropLots(
+                profile.uid,
+                (lotMap, fbPersonalLots) => {
+                  setStatusOverrides((prev) => ({ ...prev, ...lotMap }));
+                  if (fbPersonalLots.length > 0) {
+                    setPersonalLots(fbPersonalLots);
+                    setSelectedLotId(fbPersonalLots[0].id);
+                  }
                 }
-              }
-            );
+              );
+            }
 
             const target = determinePostLoginDestination(
               syncData.user,
@@ -973,6 +984,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [token, showToast]);
 
   const logout = useCallback(async () => {
+    cleanupAllFirestoreSubscriptions();
     try {
       await signOutFromFirebase();
     } catch {
