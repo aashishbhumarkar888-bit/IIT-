@@ -1,0 +1,6 @@
+{
+  "name": "Kisan-SPO",
+  "description": "Smart Procurement & Lifecycle Orchestration — Indian AgriTech platform for crop monitoring, digital crop passports, net-pocket buyer arbitrage, weighbridge verification, and 50-50 escrow settlement.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,318 @@
+@import "tailwindcss";
+
+:root {
+  /* Strict Four-Color Chromatic System */
+  --color-saffron: #FF9933;
+  --color-saffron-deep: #371A00;
+  --color-saffron-tint: #FFDCC2;
+
+  --color-white: #FFFFFF;
+
+  --color-green: #138808;
+  --color-green-deep: #006B3C;
+  --color-green-tint: #E8F5E9;
+  --color-green-bright: #9DF6B9;
+
+  --color-blue: #000080;
+  --color-blue-deep: #00003C;
+  --color-blue-tint: #E8EAF6;
+
+  /* Text Colors */
+  --color-text-black: #000000;
+  --color-text-white: #FFFFFF;
+
+  /* Typography */
+  --font-en: 'Inter', 'Noto Sans Devanagari', sans-serif;
+  --font-hi: 'Noto Sans Devanagari', 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Spacing & Dimensions */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+
+  /* Corner Radii */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* Input & Control Heights */
+  --control-height-sm: 36px;
+  --control-height-md: 44px;
+  --control-height-lg: 48px;
+
+  /* Navigation Dimensions */
+  --header-height-mobile: 64px;
+  --header-height-desktop: 64px;
+  --bottom-nav-height: 64px;
+  --sidebar-width: 256px;
+
+  /* Shared Motion & Transition Tokens (Parts 10 & 11) */
+  --duration-fast: 150ms;
+  --duration-normal: 220ms;
+  --duration-standard: 220ms;
+  --duration-emphasis: 320ms;
+  --duration-intro: 480ms;
+  --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100dvh;
+  background-color: var(--color-white);
+  color: var(--color-text-black);
+  font-family: var(--font-en);
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.font-hindi {
+  font-family: var(--font-hi);
+}
+
+.font-tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.material-symbols-filled {
+  font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Visible Keyboard Focus for WCAG 2.2 AA */
+:focus-visible {
+  outline: 3px solid var(--color-blue);
+  outline-offset: 2px;
+}
+
+/* Safe area support */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* ==========================================================================
+   COHERENT MOTION & STATE TRANSITION SYSTEM (24 Animations + 10 Transitions)
+   ========================================================================== */
+
+/* Animation 1: Brand mark entrance (480ms, runs once) */
+@keyframes kisanBrandReveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.88) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.anim-brand-entrance {
+  animation: kisanBrandReveal var(--duration-intro) var(--ease-standard) 1 both;
+}
+
+/* Animation 2: Authentication card entrance */
+@keyframes kisanAuthCardReveal {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.anim-auth-card {
+  animation: kisanAuthCardReveal var(--duration-emphasis) var(--ease-standard) 1 both;
+}
+
+/* Animation 3 & 21: Authentication success & local action checkmark pop */
+@keyframes kisanSuccessPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.anim-success-cue {
+  animation: kisanSuccessPop var(--duration-emphasis) var(--ease-standard) 1 both;
+}
+
+/* Animation 4 & Transition 2: Route entrance */
+@keyframes kisanRouteEnter {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.anim-route-enter {
+  animation: kisanRouteEnter var(--duration-standard) var(--ease-standard) 1 both;
+}
+
+/* Animation 7: KPI hover feedback (on hover-capable devices) */
+@media (hover: hover) {
+  .anim-kpi-card {
+    transition: transform var(--duration-fast) var(--ease-standard),
+                box-shadow var(--duration-fast) var(--ease-standard);
+  }
+  .anim-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 128, 0.12);
+  }
+}
+
+/* Animation 9 & 10: Active crop & QR scanning beam */
+@keyframes kisanScanSweep {
+  0% {
+    transform: translateY(0%);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translateY(420%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0%);
+    opacity: 0.9;
+  }
+}
+.anim-scan-beam {
+  animation: kisanScanSweep 2.2s ease-in-out infinite;
+}
+
+/* Animation 14: Logistics route dash reveal */
+@keyframes kisanRouteFlow {
+  0% {
+    stroke-dashoffset: 32;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+.anim-route-line {
+  animation: kisanRouteFlow 1.8s linear infinite;
+}
+
+/* Animation 15 & 22: Staggered pin & panel entrance */
+@keyframes kisanStaggerIn {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.anim-stagger-1 {
+  animation: kisanStaggerIn var(--duration-standard) var(--ease-standard) 40ms 1 both;
+}
+.anim-stagger-2 {
+  animation: kisanStaggerIn var(--duration-standard) var(--ease-standard) 90ms 1 both;
+}
+.anim-stagger-3 {
+  animation: kisanStaggerIn var(--duration-standard) var(--ease-standard) 140ms 1 both;
+}
+.anim-stagger-4 {
+  animation: kisanStaggerIn var(--duration-standard) var(--ease-standard) 190ms 1 both;
+}
+
+/* Animation 17 & Transition 6: Dialog & drawer entrance */
+@keyframes kisanDialogOpen {
+  0% {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.anim-dialog-enter {
+  animation: kisanDialogOpen var(--duration-standard) var(--ease-standard) 1 both;
+}
+
+/* Animation 18: Toast notification slide and fade */
+@keyframes kisanToastIn {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.anim-toast-enter {
+  animation: kisanToastIn var(--duration-standard) var(--ease-standard) 1 both;
+}
+
+/* Animation 20: Button pressed feedback */
+.anim-btn-press {
+  transition: transform var(--duration-fast) var(--ease-standard),
+              background-color var(--duration-fast) var(--ease-standard),
+              opacity var(--duration-fast) var(--ease-standard);
+}
+.anim-btn-press:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Animation 24: Form validation feedback nudge */
+@keyframes kisanValidationNudge {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+.anim-validation-error {
+  animation: kisanValidationNudge 180ms ease-in-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .anim-scan-beam,
+  .anim-route-line {
+    animation: none !important;
+  }
+}
