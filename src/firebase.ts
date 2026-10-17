@@ -20,7 +20,7 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import rawFirebaseConfig from '../firebase-applet-config.json';
 import {
   CropLot,
   Language,
@@ -28,6 +28,49 @@ import {
   UserRole,
   VerificationStatus,
 } from './types/kisan';
+
+const firebaseConfig = {
+  projectId:
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) ||
+    rawFirebaseConfig?.projectId ||
+    'kisan-spo-demo',
+  appId:
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) ||
+    rawFirebaseConfig?.appId ||
+    '1:demo:web:kisan',
+  apiKey:
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) ||
+    rawFirebaseConfig?.apiKey ||
+    'AIzaSyDemoKeyForKisanSpo',
+  authDomain:
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) ||
+    rawFirebaseConfig?.authDomain ||
+    'kisan-spo-demo.firebaseapp.com',
+  firestoreDatabaseId:
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_FIRESTORE_DATABASE_ID) ||
+    rawFirebaseConfig?.firestoreDatabaseId ||
+    '(default)',
+  storageBucket:
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) ||
+    rawFirebaseConfig?.storageBucket ||
+    'kisan-spo-demo.firebasestorage.app',
+  messagingSenderId:
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) ||
+    rawFirebaseConfig?.messagingSenderId ||
+    '1234567890',
+  measurementId:
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MEASUREMENT_ID) ||
+    rawFirebaseConfig?.measurementId ||
+    '',
+  oAuthClientId:
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_OAUTH_CLIENT_ID) ||
+    rawFirebaseConfig?.oAuthClientId ||
+    '',
+  recaptchaSiteKey:
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_RECAPTCHA_SITE_KEY) ||
+    rawFirebaseConfig?.recaptchaSiteKey ||
+    '',
+};
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);

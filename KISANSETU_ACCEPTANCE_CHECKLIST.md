@@ -64,3 +64,20 @@
 - **IN PROGRESS:** 0
 - **NOT STARTED:** 7 (Evaluated PPT architectural proposals)
 - **BLOCKED:** 1 (`PPT-MKT-01` Live Agmarknet API key/endpoint)
+
+---
+
+## 4. Stage 2 Acceptance Criteria & Verification Summary
+
+| Stage 2 Requirement | Status | Evidence / Implementation Details |
+|---|---|---|
+| Stable Crop-Lot ID across Detect, Compare, Complete | `VERIFIED` | State persists in `KisanContext` and server snapshot (`tests/api-v1-integration.test.js`, `tests/c2c-integration.test.js`) |
+| Screening Adapter with Safe KVK Referral | `VERIFIED` | `CropToCashService.screenCropImage` & `tests/crop-to-cash.test.js`; strictly zero synthetic pesticide prescriptions |
+| Deterministic Comparison Fixtures (50 qtl) | `VERIFIED` | Exact fixture matching: FCI ₹1,26,750; Mandi ₹1,11,000; Direct ₹1,13,500; Downside ₹1,12,500 (`tests/crop-to-cash-calculations.test.js`) |
+| Complete Procurement & Sale Reconciliation | `VERIFIED` | `POST /api/v1/lots/:lotId/procurement-attempts` and `POST /api/v1/lots/:lotId/sales` with variance tracking |
+| Privacy-Safe ID Verification (No Aadhaar/PII Scans) | `VERIFIED` | Readiness tracked exclusively as boolean flags; QR payload contains zero private identity documents |
+| Bilingual (English & Hindi) UI Localization | `VERIFIED` | Full EN/HI dictionary coverage across all 3 steps; preserves input state across language toggles |
+| Owner-Level Workspace Data Isolation | `VERIFIED` | `server.ts` enforces 403 Forbidden for non-owners (`tests/api-v1-integration.test.js`) |
+| Admin RBAC & Aggregated Pilot Analytics | `VERIFIED` | Server RBAC protects `/admin`; `GET /api/admin/pilot-analytics` aggregates privacy-safe metrics |
+| Credentials & Repository Security | `VERIFIED` | `firebase-applet-config.json` untracked and gitignored; safe example template committed |
+

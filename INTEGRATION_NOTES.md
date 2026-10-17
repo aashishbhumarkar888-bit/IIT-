@@ -75,3 +75,9 @@
 
 4. **Complete / Procurement & Sale:**
    Append readiness changes via `POST /api/v1/lots/:lotId/readiness`, visits via `POST /api/v1/lots/:lotId/procurement-attempts`, and transactions via `POST /api/v1/lots/:lotId/sales`. Fetch the full ledger via `GET /api/v1/lots/:lotId/ledger`.
+
+5. **Security & Secrets Hygiene:**
+   - Browser Firebase configuration is public client configuration, not a backend secret.
+   - Do not commit service-account credentials or local config with private credentials.
+   - Keep `.gitignore` updated with `firebase-applet-config.json` and credentials patterns.
+

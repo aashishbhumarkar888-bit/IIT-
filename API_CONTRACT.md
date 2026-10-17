@@ -346,3 +346,14 @@ Aggregated metrics for FPO/Mandi administrators.
     "privacySafeNote": "Aggregated analytics; individual Aadhaar or raw personal records are never recorded or exposed."
   }
   ```
+
+---
+
+## 4. Environment & Adapter Operational Notes
+
+- In local development and automated CI, `/api/v1` routes operate with in-memory transaction state keyed by `lotId`.
+- The frontend adapter (`src/services/cropToCashAdapter.ts`) supports dual operation:
+  - When `VITE_CROP_TO_CASH_API_ENABLED=true`, it communicates with the live REST `/api/v1` routes.
+  - When unset or `false`, it utilizes `createCropToCashMockAdapter` with in-memory state.
+- In both modes, inference results are explicitly labeled as `DEMO`, and strict privacy protections (no Aadhaar, passbook, or sensitive ID scans) are enforced.
+
