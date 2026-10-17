@@ -29,6 +29,7 @@ const PROTECTED_APP_ROUTES: AppRoute[] = [
   '/onboarding',
   '/dashboard',
   '/advisory',
+  '/crop-to-cash',
   '/crop-passport',
   '/market-comparison',
   '/harvest-payments',
@@ -98,7 +99,7 @@ export interface UseAuthSessionReturn {
     email: string
   ) => Promise<{ ok: boolean; message?: string; error?: string }>;
   verifyEmailWithServer: () => Promise<void>;
-  logout: () => Promise<void>;
+  logout: (sessionExpired?: boolean | unknown) => Promise<void>;
 }
 
 /**
@@ -851,44 +852,52 @@ export function useAuthSession({
     }
   }, [token, showToast]);
 
-  const logout = useCallback(async () => {
-    ++authOperationSeqRef.current;
-    // Immediately clear private user state before async network / Firebase sign-out completes
-    detachLotsSubscription();
-    onWorkspaceReset();
-    setToken(null);
-    setUser(null);
-    setProfileStatus('IDLE');
-    setProfileError(null);
-    setAuthStatus('UNAUTHENTICATED');
+  const logout = useCallback(
+    async (sessionExpired?: boolean | unknown) => {
+      ++authOperationSeqRef.current;
+      // Immediately clear private user state before async network / Firebase sign-out completes
+      detachLotsSubscription();
+      onWorkspaceReset();
+      setToken(null);
+      setUser(null);
+      setProfileStatus('IDLE');
+      setProfileError(null);
+      setAuthStatus('UNAUTHENTICATED');
 
-    try {
-      sessionStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
-    } catch {
-      // Ignore
-    }
-
-    try {
-      await signOutFromFirebase();
-    } catch {
-      // Ignore Firebase sign-out error
-    }
-    setFirebaseUser(null);
-
-    if (token) {
       try {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        sessionStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
       } catch {
-        // Ignore network error on logout
+        // Ignore
       }
-    }
 
-    syncHistory('/login');
-    showToast('Signed out securely from Firebase & Kisan-SPO.', 'blue');
-  }, [token, detachLotsSubscription, onWorkspaceReset, syncHistory, showToast]);
+      try {
+        await signOutFromFirebase();
+      } catch {
+        // Ignore Firebase sign-out error
+      }
+      setFirebaseUser(null);
+
+      if (token) {
+        try {
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        } catch {
+          // Ignore network error on logout
+        }
+      }
+
+      syncHistory('/login');
+      showToast(
+        sessionExpired === true
+          ? 'Your server session expired. Please sign in again.'
+          : 'Signed out. Any copied server token expires within 15 minutes.',
+        sessionExpired === true ? 'saffron' : 'blue'
+      );
+    },
+    [token, detachLotsSubscription, onWorkspaceReset, syncHistory, showToast]
+  );
 
   return {
     authStatus,
@@ -961,8 +970,8 @@ export interface UseAuthReturn {
   updateUserProfile: (
     updates: ProfileUpdatePayload
   ) => Promise<{ ok: boolean; error?: string }>;
-  signOut: () => Promise<void>;
-  logout: () => Promise<void>;
+  signOut: (sessionExpired?: boolean | unknown) => Promise<void>;
+  logout: (sessionExpired?: boolean | unknown) => Promise<void>;
 }
 
 /**
@@ -972,6 +981,7 @@ export interface UseAuthReturn {
  * (`signOut` / `logout`), synchronized with `KisanContext`.
  */
 export function useAuth(): UseAuthReturn {
+  const ctx = useKisan();
   const {
     user,
     firebaseUser,
@@ -990,7 +1000,9 @@ export function useAuth(): UseAuthReturn {
     verifyEmailWithServer,
     updateUserProfile,
     logout,
-  } = useKisan();
+  } = ctx;
+
+  const signOut = useCallback(() => logout(false), [logout]);
 
   return {
     user,
@@ -1000,10 +1012,7 @@ export function useAuth(): UseAuthReturn {
     profileStatus,
     profileError,
     authSuccessTransition,
-    isAuthenticated:
-      authStatus === 'AUTHENTICATED' &&
-      profileStatus === 'READY' &&
-      user !== null,
+    isAuthenticated: authStatus === 'AUTHENTICATED' && user !== null,
     isLoading:
       authStatus === 'LOADING' ||
       profileStatus === 'LOADING' ||
@@ -1021,7 +1030,7 @@ export function useAuth(): UseAuthReturn {
     requestPasswordReset,
     verifyEmailWithServer,
     updateUserProfile,
-    signOut: logout,
+    signOut,
     logout,
   };
 }

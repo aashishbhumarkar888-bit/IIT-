@@ -1,3 +1,4 @@
+import { User as FirebaseUser } from 'firebase/auth';
 import React, {
   createContext,
   useCallback,
@@ -12,16 +13,13 @@ import {
   INITIAL_PAYMENT,
 } from '../data/kisanData';
 import {
-  auth,
-  cleanupAllFirestoreSubscriptions,
-  ensureFirestoreUserProfile,
-  onAuthStateChanged,
   saveCropLotToFirestore,
-  signInWithGoogle,
-  signOutFromFirebase,
-  subscribeToUserCropLots,
   updateFirestoreUserPreferences,
 } from '../firebase';
+import {
+  ProfileLifecycleStatus,
+  useAuthSession,
+} from '../hooks/useAuth';
 import { calculateArbitrage } from '../services/kisanService';
 import { getServerSessionExpiry } from '../sessionToken';
 import {
@@ -132,10 +130,14 @@ function parsePathname(): AppRoute {
 interface KisanContextValue {
   // Authentication & Session
   authStatus: 'LOADING' | 'AUTHENTICATED' | 'UNAUTHENTICATED';
+  profileStatus: ProfileLifecycleStatus;
+  profileError: string | null;
   authSuccessTransition: boolean;
   user: AuthenticatedUser | null;
+  firebaseUser: FirebaseUser | null;
   token: string | null;
   devDemoMode: boolean;
+  retryProfileInit: () => Promise<void>;
   loginWithGoogle: (
     preferredRole?: UserRole,
     preferredVillageOrOrg?: string,
@@ -156,6 +158,9 @@ interface KisanContextValue {
     email: string,
     password: string
   ) => Promise<{ ok: boolean; error?: string }>;
+  requestPasswordReset: (
+    email: string
+  ) => Promise<{ ok: boolean; message?: string; error?: string }>;
   updateUserProfile: (
     updates: ProfileUpdatePayload
   ) => Promise<{ ok: boolean; error?: string }>;
@@ -164,7 +169,7 @@ interface KisanContextValue {
   ) => Promise<{ ok: boolean; lot?: CropLot; error?: string }>;
   resetDemoDataset: () => Promise<void>;
   verifyEmailWithServer: () => Promise<void>;
-  logout: (sessionExpired?: boolean) => Promise<void>;
+  logout: (sessionExpired?: boolean | unknown) => Promise<void>;
 
   // Dashboard Mode (Personal Assistant vs Operations Desk)
   workspaceViewMode: 'PERSONAL' | 'OPERATIONS_DESK';
@@ -251,14 +256,6 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     PUBLIC_ROUTES.includes(initialPath) ? initialPath : '/login'
   );
 
-  const [authStatus, setAuthStatus] = useState<
-    'LOADING' | 'AUTHENTICATED' | 'UNAUTHENTICATED'
-  >('LOADING');
-  const [authSuccessTransition, setAuthSuccessTransition] =
-    useState<boolean>(false);
-  const [user, setUser] = useState<AuthenticatedUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [devDemoMode, setDevDemoMode] = useState<boolean>(true);
   const [adminDialogOpen, setAdminDialogOpen] = useState<boolean>(false);
   const [addCropModalOpen, setAddCropModalOpen] = useState<boolean>(false);
   const [workspaceViewMode, setWorkspaceViewMode] = useState<
@@ -324,179 +321,60 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  const determinePostLoginDestination = useCallback(
-    (authedUser: AuthenticatedUser, preferredDest?: AppRoute): AppRoute => {
-      if (authedUser.role === 'admin' && preferredDest === '/admin') {
-        return '/admin';
+  const handleLotsSynchronized = useCallback(
+    (
+      lots: CropLot[],
+      selectedId?: string,
+      statusMap?: Record<string, VerificationStatus>
+    ) => {
+      if (statusMap) {
+        setStatusOverrides((prev) => ({ ...prev, ...statusMap }));
       }
-      if (authedUser.onboardingStatus === 'INCOMPLETE') {
-        return '/onboarding';
+      setPersonalLots(lots);
+      if (selectedId) {
+        setSelectedLotId(selectedId);
       }
-      if (
-        preferredDest &&
-        PROTECTED_ROUTES.includes(preferredDest) &&
-        preferredDest !== '/admin' &&
-        preferredDest !== '/onboarding'
-      ) {
-        return preferredDest;
-      }
-      return '/dashboard';
     },
     []
   );
 
-  // Verify existing Firebase Auth or Server session on initial load
-  useEffect(() => {
-    let cancelled = false;
-    let unsubscribeLots: (() => void) | null = null;
+  const handleWorkspaceReset = useCallback(() => {
+    setPersonalLots([]);
+    setStatusOverrides({});
+    setContractLocked(false);
+    setProcessorPivotApproved(false);
+    setWorkspaceViewMode('PERSONAL');
+  }, []);
 
-    const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
-      if (cancelled) return;
-
-      if (!fbUser) {
-        if (unsubscribeLots) {
-          unsubscribeLots();
-          unsubscribeLots = null;
-        }
-        cleanupAllFirestoreSubscriptions();
-      }
-
-      if (fbUser) {
-        try {
-          const profile = await ensureFirestoreUserProfile(fbUser);
-          const syncRes = await fetch('/api/auth/firebase-sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              uid: profile.uid,
-              email: profile.email,
-              displayName: profile.displayName,
-              role: profile.role,
-              villageOrOrg: profile.villageOrOrg,
-              village: profile.village,
-              district: profile.district,
-              state: profile.state,
-              phoneNumber: profile.phoneNumber,
-              preferredLanguage: profile.preferredLanguage,
-              onboardingStatus: profile.onboardingStatus,
-              onboardingStep: profile.onboardingStep,
-              profileCompletion: profile.profileCompletion,
-              emailVerified: profile.emailVerified,
-            }),
-          });
-          const syncData = await syncRes.json();
-
-          if (!cancelled && syncRes.ok && syncData.token && syncData.user) {
-            try {
-              sessionStorage.setItem(SESSION_TOKEN_STORAGE_KEY, syncData.token);
-            } catch {
-              // Ignore
-            }
-            setToken(syncData.token);
-            setUser(syncData.user);
-            setDevDemoMode(Boolean(syncData.devDemoMode));
-            setRoleState(profile.role);
-            setLanguageState(profile.preferredLanguage);
-            setWorkspaceViewMode(
-              syncData.user.isDemoAccount ? 'PERSONAL' : 'PERSONAL'
-            );
-            setAuthStatus('AUTHENTICATED');
-
-            if (unsubscribeLots) unsubscribeLots();
-            if (auth.currentUser && auth.currentUser.uid === fbUser.uid) {
-              unsubscribeLots = subscribeToUserCropLots(
-                profile.uid,
-                (lotMap, fbPersonalLots) => {
-                  setStatusOverrides((prev) => ({ ...prev, ...lotMap }));
-                  if (fbPersonalLots.length > 0) {
-                    setPersonalLots(fbPersonalLots);
-                    setSelectedLotId(fbPersonalLots[0].id);
-                  }
-                }
-              );
-            }
-
-            const target = determinePostLoginDestination(
-              syncData.user,
-              initialPath
-            );
-            syncHistory(target);
-            return;
-          }
-        } catch {
-          // Fall back to server session check
-        }
-      }
-
-      // Check existing server session token if not signed in via Firebase
-      let savedToken: string | null = null;
-      try {
-        savedToken = sessionStorage.getItem(SESSION_TOKEN_STORAGE_KEY);
-      } catch {
-        // Ignore
-      }
-
-      if (!savedToken) {
-        if (!cancelled) {
-          setAuthStatus('UNAUTHENTICATED');
-          syncHistory(
-            PUBLIC_ROUTES.includes(initialPath) ? initialPath : '/login'
-          );
-        }
-        return;
-      }
-
-      try {
-        const res = await fetch('/api/auth/session', {
-          headers: { Authorization: `Bearer ${savedToken}` },
-        });
-        const data = await res.json();
-        if (!cancelled && res.ok && data.authenticated && data.user) {
-          setToken(savedToken);
-          setUser(data.user);
-          setPersonalLots(data.personalLots || []);
-          if (data.personalLots?.length > 0) {
-            setSelectedLotId(data.personalLots[0].id);
-          } else if (data.user.isDemoAccount) {
-            setSelectedLotId('KS-MP-2025-089');
-          }
-          setDevDemoMode(Boolean(data.devDemoMode));
-          if (data.user.role !== 'admin') {
-            setRoleState(data.user.role as UserRole);
-          }
-          if (
-            data.user.preferredLanguage === 'en' ||
-            data.user.preferredLanguage === 'hi'
-          ) {
-            setLanguageState(data.user.preferredLanguage);
-          }
-          setWorkspaceViewMode('PERSONAL');
-          setAuthStatus('AUTHENTICATED');
-          const target = determinePostLoginDestination(data.user, initialPath);
-          syncHistory(target);
-        } else if (!cancelled) {
-          try {
-            sessionStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
-          } catch {
-            // Ignore
-          }
-          setAuthStatus('UNAUTHENTICATED');
-          syncHistory('/login');
-        }
-      } catch {
-        if (!cancelled) {
-          setAuthStatus('UNAUTHENTICATED');
-          syncHistory('/login');
-        }
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribeAuth();
-      if (unsubscribeLots) unsubscribeLots();
-    };
-  }, [initialPath, syncHistory, determinePostLoginDestination]);
+  const {
+    authStatus,
+    profileStatus,
+    profileError,
+    authSuccessTransition,
+    user,
+    firebaseUser,
+    token,
+    devDemoMode,
+    setUser,
+    retryProfileInit,
+    loginWithGoogle,
+    loginWithServer,
+    registerWithServer,
+    adminLoginWithServer,
+    requestPasswordReset,
+    verifyEmailWithServer,
+    logout,
+  } = useAuthSession({
+    initialPath,
+    intendedRoute,
+    syncHistory,
+    showToast,
+    onRoleSynchronized: setRoleState,
+    onLanguageSynchronized: setLanguageState,
+    onLotsSynchronized: handleLotsSynchronized,
+    onWorkspaceReset: handleWorkspaceReset,
+    setAdminDialogOpen,
+  });
 
   // Global keyboard shortcut: Ctrl + Shift + A (Windows/Linux) or Cmd + Shift + A (macOS)
   useEffect(() => {
@@ -581,249 +459,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     [authStatus, user, syncHistory]
   );
 
-  const completeAuthTransition = useCallback(
-    (
-      sessionToken: string,
-      authedUser: AuthenticatedUser,
-      userLots: CropLot[],
-      destination: AppRoute
-    ) => {
-      try {
-        sessionStorage.setItem(SESSION_TOKEN_STORAGE_KEY, sessionToken);
-      } catch {
-        // Ignore
-      }
-      setToken(sessionToken);
-      setUser(authedUser);
-      setPersonalLots(userLots);
-      if (userLots.length > 0) {
-        setSelectedLotId(userLots[0].id);
-      } else if (authedUser.isDemoAccount) {
-        setSelectedLotId('KS-MP-2025-089');
-      }
-      if (authedUser.role !== 'admin') {
-        setRoleState(authedUser.role as UserRole);
-      }
-      if (
-        authedUser.preferredLanguage === 'en' ||
-        authedUser.preferredLanguage === 'hi'
-      ) {
-        setLanguageState(authedUser.preferredLanguage);
-      }
-      setWorkspaceViewMode('PERSONAL');
-      setAuthSuccessTransition(true);
-      setTimeout(() => {
-        setAuthStatus('AUTHENTICATED');
-        setAuthSuccessTransition(false);
-        syncHistory(destination);
-      }, 260);
-    },
-    [syncHistory]
-  );
-
-  const loginWithGoogle = useCallback(
-    async (
-      preferredRole: UserRole = 'farmer',
-      preferredVillageOrOrg: string = '',
-      openAdminAfter: boolean = false
-    ): Promise<{ ok: boolean; error?: string }> => {
-      try {
-        const profile = await signInWithGoogle(
-          preferredRole,
-          preferredVillageOrOrg
-        );
-        const syncRes = await fetch('/api/auth/firebase-sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            uid: profile.uid,
-            email: profile.email,
-            displayName: profile.displayName,
-            role: profile.role,
-            villageOrOrg: profile.villageOrOrg,
-            village: profile.village,
-            district: profile.district,
-            state: profile.state,
-            phoneNumber: profile.phoneNumber,
-            preferredLanguage: profile.preferredLanguage,
-            onboardingStatus: profile.onboardingStatus,
-            onboardingStep: profile.onboardingStep,
-            profileCompletion: profile.profileCompletion,
-            emailVerified: profile.emailVerified,
-          }),
-        });
-        const syncData = await syncRes.json();
-        if (!syncRes.ok || !syncData.token) {
-          return {
-            ok: false,
-            error:
-              syncData.error ||
-              'Failed to synchronize Firebase session with Kisan-SPO server.',
-          };
-        }
-
-        if (openAdminAfter && syncData.user.role !== 'admin') {
-          return {
-            ok: false,
-            error: `Signed in as ${syncData.user.email} (${syncData.user.role}), which is not an authorized Administrator account.`,
-          };
-        }
-
-        setAdminDialogOpen(false);
-        const destination: AppRoute =
-          openAdminAfter && syncData.user.role === 'admin'
-            ? '/admin'
-            : determinePostLoginDestination(syncData.user, intendedRoute);
-        completeAuthTransition(
-          syncData.token,
-          syncData.user,
-          syncData.personalLots || [],
-          destination
-        );
-        showToast(
-          `Signed in with Google (${profile.email}) • Synced with Cloud Firestore`,
-          'green'
-        );
-        return { ok: true };
-      } catch (err) {
-        const msg =
-          err instanceof Error
-            ? err.message
-            : 'Google Sign-In popup was closed or blocked.';
-        return {
-          ok: false,
-          error: msg.includes('auth/popup-closed-by-user')
-            ? 'Google Sign-In popup was closed before completing authentication.'
-            : msg,
-        };
-      }
-    },
-    [
-      intendedRoute,
-      determinePostLoginDestination,
-      completeAuthTransition,
-      showToast,
-    ]
-  );
-
-  const loginWithServer = useCallback(
-    async (
-      email: string,
-      password: string
-    ): Promise<{ ok: boolean; error?: string }> => {
-      try {
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.token) {
-          return {
-            ok: false,
-            error: data.error || 'Authentication failed. Check credentials.',
-          };
-        }
-        const target =
-          data.user.role === 'admin'
-            ? '/admin'
-            : determinePostLoginDestination(data.user, intendedRoute);
-        completeAuthTransition(
-          data.token,
-          data.user,
-          data.personalLots || [],
-          target
-        );
-        return { ok: true };
-      } catch {
-        return {
-          ok: false,
-          error: 'Network error communicating with authentication server.',
-        };
-      }
-    },
-    [intendedRoute, determinePostLoginDestination, completeAuthTransition]
-  );
-
-  const registerWithServer = useCallback(
-    async (params: {
-      name: string;
-      email: string;
-      password: string;
-      role: UserRole;
-      villageOrOrg: string;
-    }): Promise<{ ok: boolean; error?: string }> => {
-      try {
-        const res = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(params),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.token) {
-          return {
-            ok: false,
-            error: data.error || 'Registration could not be completed.',
-          };
-        }
-        completeAuthTransition(
-          data.token,
-          data.user,
-          [],
-          '/onboarding'
-        );
-        return { ok: true };
-      } catch {
-        return {
-          ok: false,
-          error: 'Network error during account registration.',
-        };
-      }
-    },
-    [completeAuthTransition]
-  );
-
-  const adminLoginWithServer = useCallback(
-    async (
-      email: string,
-      password: string
-    ): Promise<{ ok: boolean; error?: string }> => {
-      try {
-        const res = await fetch('/api/auth/admin-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.token) {
-          return {
-            ok: false,
-            error:
-              data.error ||
-              'Administrator verification failed. Unauthorized access denied.',
-          };
-        }
-        setAdminDialogOpen(false);
-        completeAuthTransition(
-          data.token,
-          data.user,
-          data.personalLots || [],
-          '/admin'
-        );
-        showToast(
-          `Verified Administrator Session: ${data.user.name}`,
-          'green'
-        );
-        return { ok: true };
-      } catch {
-        return {
-          ok: false,
-          error: 'Unable to reach administrator verification server.',
-        };
-      }
-    },
-    [completeAuthTransition, showToast]
-  );
+  // Session & Authentication actions are managed by useAuthSession above
 
   const updateUserProfile = useCallback(
     async (
@@ -969,59 +605,7 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     );
   }, [token, showToast]);
 
-  const verifyEmailWithServer = useCallback(async () => {
-    if (!token) return;
-    try {
-      const res = await fetch('/api/auth/verify-email', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (res.ok && data.user) {
-        setUser(data.user);
-        showToast('Email address verified for your Kisan-SPO account.', 'green');
-      }
-    } catch {
-      // Ignore
-    }
-  }, [token, showToast]);
-
-  const logout = useCallback(async (sessionExpired = false) => {
-    cleanupAllFirestoreSubscriptions();
-    try {
-      await signOutFromFirebase();
-    } catch {
-      // Ignore
-    }
-    if (token) {
-      try {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      } catch {
-        // Ignore
-      }
-    }
-    try {
-      sessionStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
-    } catch {
-      // Ignore
-    }
-    setToken(null);
-    setUser(null);
-    setPersonalLots([]);
-    setContractLocked(false);
-    setProcessorPivotApproved(false);
-    setAuthStatus('UNAUTHENTICATED');
-    syncHistory('/login');
-    showToast(
-      sessionExpired
-        ? 'Your server session expired. Please sign in again.'
-        : 'Signed out. Any copied server token expires within 15 minutes.',
-      sessionExpired ? 'saffron' : 'blue'
-    );
-  }, [token, syncHistory, showToast]);
+  // verifyEmailWithServer and logout are provided by useAuthSession above
 
   useEffect(() => {
     if (!token) return;
@@ -1199,14 +783,19 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
     <KisanContext.Provider
       value={{
         authStatus,
+        profileStatus,
+        profileError,
         authSuccessTransition,
         user,
+        firebaseUser,
         token,
         devDemoMode,
+        retryProfileInit,
         loginWithGoogle,
         loginWithServer,
         registerWithServer,
         adminLoginWithServer,
+        requestPasswordReset,
         updateUserProfile,
         addPersonalCropLot,
         resetDemoDataset,

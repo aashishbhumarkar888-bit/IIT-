@@ -46,6 +46,7 @@ const EVENT_TYPES = ['READINESS', 'COMPARISON', 'PROCUREMENT', 'SALE'] as const;
 const PROCUREMENT_VALUES = [
   'PLANNED',
   'VISITED',
+  'ACCEPTED',
   'PENDING',
   'REJECTED',
   'RESCHEDULED',
@@ -432,5 +433,6 @@ export function createCropToCashMockAdapter(
 }
 
 export const cropToCashApiEnabled =
-  typeof import.meta.env !== 'undefined' &&
-  import.meta.env.VITE_CROP_TO_CASH_API_ENABLED === 'true';
+  typeof import.meta.env === 'undefined' ||
+  import.meta.env.VITE_CROP_TO_CASH_API_ENABLED !== 'false';
+

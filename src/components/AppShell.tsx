@@ -78,7 +78,6 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
     toast,
     clearToast,
     personalLots,
-    setAdminDialogOpen,
   } = useKisan();
   const { user, logout, verifyEmailWithServer, updateUserProfile } = useAuth();
 
@@ -232,12 +231,14 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
 
               <div
                 role="group"
-                aria-label="Language switcher"
+                aria-label={t('Language switcher', 'भाषा चयनकर्ता')}
                 className="flex items-center bg-[#E8EAF6] rounded p-0.5 border border-[#000080]/20"
               >
                 <button
                   type="button"
                   onClick={() => setLanguage('en')}
+                  aria-pressed={language === 'en'}
+                  aria-label={t('Switch language to English', 'अंग्रेज़ी भाषा चुनें')}
                   className={`px-2.5 py-1 text-xs rounded font-bold min-h-[32px] transition-colors ${
                     language === 'en'
                       ? 'bg-[#000080] text-white'
@@ -249,6 +250,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
                 <button
                   type="button"
                   onClick={() => setLanguage('hi')}
+                  aria-pressed={language === 'hi'}
+                  aria-label={t('Switch language to Hindi', 'हिंदी भाषा चुनें')}
                   className={`px-2.5 py-1 text-xs rounded font-bold font-hindi min-h-[32px] transition-colors ${
                     language === 'hi'
                       ? 'bg-[#000080] text-white'
@@ -261,7 +264,10 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
 
               <button
                 type="button"
-                aria-label="User Profile and Role Settings"
+                aria-label={t(
+                  'User Profile and Role Settings',
+                  'उपयोगकर्ता प्रोफ़ाइल और भूमिका सेटिंग्स'
+                )}
                 onClick={() => setProfileModalOpen(true)}
                 className="w-10 h-10 rounded-full bg-[#000080] text-white flex items-center justify-center shrink-0 hover:bg-[#00003C]"
               >
@@ -435,34 +441,32 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
               )}
             </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                user?.role === 'admin'
-                  ? navigate('/admin')
-                  : setAdminDialogOpen(true)
-              }
-              className={`mt-1 flex items-center gap-3 px-3 py-2.5 rounded text-left transition-colors min-h-[44px] font-bold border ${
-                route === '/admin'
-                  ? 'bg-[#000080] text-white border-[#000080]'
-                  : 'bg-[#E8EAF6] text-[#000080] hover:bg-[#000080] hover:text-white border-[#000080]/30'
-              }`}
-              title="Administrator Console (Ctrl + Shift + A)"
-            >
-              <span className="material-symbols-outlined text-[20px] shrink-0">
-                admin_panel_settings
-              </span>
-              {sidebarOpen && (
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-extrabold uppercase tracking-wider truncate">
-                    Admin Console
-                  </span>
-                  <span className="text-[10px] font-semibold truncate">
-                    Ctrl + Shift + A
-                  </span>
-                </div>
-              )}
-            </button>
+            {user?.role === 'admin' && (
+              <button
+                type="button"
+                onClick={() => navigate('/admin')}
+                className={`mt-1 flex items-center gap-3 px-3 py-2.5 rounded text-left transition-colors min-h-[44px] font-bold border ${
+                  route === '/admin'
+                    ? 'bg-[#000080] text-white border-[#000080]'
+                    : 'bg-[#E8EAF6] text-[#000080] hover:bg-[#000080] hover:text-white border-[#000080]/30'
+                }`}
+                title={t('Administrator Console', 'प्रशासक कंसोल')}
+              >
+                <span className="material-symbols-outlined text-[20px] shrink-0">
+                  admin_panel_settings
+                </span>
+                {sidebarOpen && (
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-extrabold uppercase tracking-wider truncate">
+                      {t('Admin Console', 'प्रशासक कंसोल')}
+                    </span>
+                    <span className="text-[10px] font-semibold truncate">
+                      {t('Authorized Session', 'अधिकृत सत्र')}
+                    </span>
+                  </div>
+                )}
+              </button>
+            )}
           </nav>
 
           {/* Role-Specific Context Menu in Sidebar */}
@@ -905,18 +909,20 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
                   }}
                   className="px-3.5 py-2.5 rounded bg-[#E8EAF6] text-[#000080] border border-[#000080] text-xs font-extrabold"
                 >
-                  My Profile
+                  {t('My Profile', 'मेरी प्रोफ़ाइल')}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setProfileModalOpen(false);
-                    setAdminDialogOpen(true);
-                  }}
-                  className="px-3.5 py-2.5 rounded bg-white text-[#000080] border-2 border-[#000080] text-xs font-extrabold"
-                >
-                  Admin Access
-                </button>
+                {user?.role === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfileModalOpen(false);
+                      navigate('/admin');
+                    }}
+                    className="px-3.5 py-2.5 rounded bg-white text-[#000080] border-2 border-[#000080] text-xs font-extrabold"
+                  >
+                    {t('Admin Console', 'प्रशासक कंसोल')}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -925,14 +931,14 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
                   }}
                   className="px-3.5 py-2.5 rounded bg-[#000080] text-white text-xs font-bold"
                 >
-                  5-Device Showcase
+                  {t('5-Device Showcase', '5-स्क्रीन शोकेस')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setProfileModalOpen(false)}
                   className="px-4 py-2.5 rounded bg-[#138808] text-white text-xs font-bold"
                 >
-                  Done
+                  {t('Done', 'पूर्ण')}
                 </button>
               </div>
             </div>

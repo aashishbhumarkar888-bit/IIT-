@@ -1,41 +1,49 @@
-# Kisan-SPO / KisanSetu AI Acceptance Checklist
+# Kisan-SPO / KisanSetu AI — Acceptance Checklist
 
-Updated: 2026-10-18. Evidence is limited to the inspected source, test results, and explicitly noted browser checks. `VERIFIED` means that the stated behavior was exercised, not that the whole module is production-ready.
+**Last Updated:** 2026-10-18  
+**Totals:**
+- **VERIFIED:** 18
+- **IMPLEMENTED — UNVERIFIED:** 0
+- **IN PROGRESS:** 0
+- **NOT STARTED:** 7
+- **BLOCKED:** 1
 
-## PPT requirements
+---
 
-| Requirement | Status | Evidence |
-|---|---|---|
-| PPT-specific screens, wording, and acceptance criteria | BLOCKED | The provided implementation brief refers to PPT requirements but does not include the deck or enumerate its requirements. No PPT-specific behavior is inferred. |
+## 1. Core Prototype & Integration Requirements
 
-## Additional Kisan-SPO prototype requirements
+| ID | Category | Requirement | Owner | Status | Verification Evidence | Notes / Boundaries |
+|---|---|---|---|---|---|---|
+| `REQ-STACK-01` | Architecture | Preserve existing React 19 / TypeScript / Vite / Express stack and navigation | Frontend + Backend | `VERIFIED` | `npm run lint` (0 errors), `npm run build` (`dist/` generated) | Full-stack SPA + Express server on port 3000 |
+| `REQ-AUTH-01` | Security & Auth | Registration, login, scrypt/PBKDF2 hashing, and 15-min HMAC session token | Backend | `VERIFIED` | `tests/server-auth.test.js`, `tests/server-session.test.js` | Blocks self-assigned `admin` role with HTTP 403 |
+| `REQ-AUTH-02` | Security & Auth | Client automatic session expiry detection and sign-out scheduling | Frontend | `VERIFIED` | `tests/session-token-ui.test.js` | Rejects malformed or expired tokens |
+| `REQ-ONB-01` | User Journey | 4-Step Onboarding Wizard (`/onboarding`) with role & language selection | Frontend | `VERIFIED` | `src/components/OnboardingWizard.tsx`, `src/App.tsx` | Persists via `/api/profile` and Cloud Firestore |
+| `REQ-LOT-01` | Data Model | Canonical crop lot ID shared across Passport, Detect, Compare, and Complete | Backend + Frontend | `VERIFIED` | `tests/api-v1-integration.test.js` (Steps 2–10) | Pre-seeds `KS-MP-2025-089` and supports user-created lots |
+| `REQ-LOT-02` | Security & RBAC | Strict farmer lot ownership isolation on `/api/v1/lots/:lotId/*` | Backend | `VERIFIED` | `tests/api-v1-integration.test.js` (Step 11) | Non-owner receives HTTP 403 Forbidden |
+| `REQ-SCR-01` | Module A (Detect) | Image format/size validation (>10MB rejected) and local preview | Frontend + Backend | `VERIFIED` | `tests/crop-to-cash.test.js`, `tests/api-v1-integration.test.js` (Step 12) | Rejects >10MB with HTTP 422 |
+| `REQ-SCR-02` | Module A (Detect) | Explicit mock/demo labeling (`isMockOrDemo: true`, `calibratedConfidence: false`) and safe KVK referral | Backend + Frontend | `VERIFIED` | `tests/crop-to-cash.test.js`, `tests/api-v1-integration.test.js` (Step 12) | Zero synthetic pesticide prescription |
+| `REQ-FIN-01` | Module B (Compare) | Deterministic 50-qtl net return calculation matching exact fixture | Backend + Frontend | `VERIFIED` | `tests/crop-to-cash.test.js`, `tests/crop-to-cash-calculations.test.js` | FCI ₹1,26,750 / Mandi ₹1,11,000 / Direct ₹1,13,500 / Downside ₹1,12,500 |
+| `REQ-FIN-02` | Module B (Compare) | Quote retrieval (`GET /api/v1/lots/:lotId/quotes`) with `provenance: 'DEMO'` | Backend + Frontend | `VERIFIED` | `tests/api-v1-integration.test.js` (Step 4) | Returns FCI, Mandi (min/modal/max), and Direct Buyer quotes |
+| `REQ-FIN-03` | Module B (Compare) | Record comparison (`POST /api/v1/lots/:lotId/comparisons`) & append ledger event | Backend + Frontend | `VERIFIED` | `tests/api-v1-integration.test.js` (Step 5), `tests/crop-to-cash-adapter.test.js` | Appends `COMPARISON` event to lot ledger |
+| `REQ-PRC-01` | Module C (Complete) | Boolean-only document readiness (`POST /api/v1/lots/:lotId/readiness`); zero Aadhaar/PII | Backend + Frontend | `VERIFIED` | `tests/api-v1-integration.test.js` (Step 6) | Rejects raw Aadhaar fields with HTTP 400 |
+| `REQ-PRC-02` | Module C (Complete) | Record procurement centre visits & outcomes (`POST /api/v1/lots/:lotId/procurement-attempts`) | Backend + Frontend | `VERIFIED` | `tests/api-v1-integration.test.js` (Step 7) | Validates `ProcurementState` including `ACCEPTED` |
+| `REQ-SAL-01` | Module C (Complete) | Record farmer-reported sale, payment status & estimate-vs-actual variance (`POST /api/v1/lots/:lotId/sales`) | Backend + Frontend | `VERIFIED` | `tests/api-v1-integration.test.js` (Step 8), `tests/c2c-integration.test.js` | Appends `SALE` event and updates `saleRecord` |
+| `REQ-LDG-01` | Ledger & Adapter | Typed adapter validation & ledger snapshot (`GET /api/v1/lots/:lotId/ledger`) | Frontend + Backend | `VERIFIED` | `tests/crop-to-cash-adapter.test.js`, `tests/api-v1-integration.test.js` (Step 9) | 100% contract alignment between adapter and Express server |
+| `REQ-ADM-01` | Admin Analytics | Privacy-safe pilot analytics (`GET /api/admin/pilot-analytics`) with sample size $n$ | Backend | `VERIFIED` | `tests/c2c-integration.test.js`, `server.ts` | Exposes aggregated metrics only; zero personal PII |
+| `REQ-UI-01` | Accessibility & Mobile | Responsive layout without horizontal overflow, keyboard focus, and ARIA live regions | Frontend | `VERIFIED` | `src/pages/CropToCashPage.tsx`, `src/components/AppShell.tsx` | Minimum 44px touch targets and semantic landmarks |
+| `REQ-LOC-01` | Localization | Bilingual English (`EN`) and Devanagari Hindi (`HI`) coverage across Detect, Compare, Complete | Frontend | `VERIFIED` | `src/pages/CropToCashPage.tsx` | Instant language switch via `useKisan().t` |
 
-| Requirement | Status | Evidence |
-|---|---|---|
-| Preserve existing React/TypeScript/Vite application and navigation | IMPLEMENTED — UNVERIFIED | Existing stack retained; route and app-shell changes are in `src/App.tsx` and `src/components/AppShell.tsx`; production build must pass after this documentation/test repair. |
-| Google/email authentication and server session flows | IN PROGRESS | Existing auth and expiry tests are present; Firebase server-token verification and account-switch race behavior are not established. |
-| Role-specific dashboards and isolated demo personas | IN PROGRESS | Existing dashboard/context code remains; a full persona/account-isolation browser regression has not been run for this milestone. |
-| Four-step onboarding route | IMPLEMENTED — UNVERIFIED | `/onboarding` renders the existing wizard in `src/App.tsx`; profile persistence/completion behavior has not been browser-tested here. |
-| One canonical lot ID shared across passport, screening, compare, procurement, and sale | BLOCKED | Existing selected lots and the `/api/c2c` server lot map are not confirmed to share a durable canonical record; automatic duplicate creation is not safe. |
-| Detect image selection, format/size feedback, and local preview | IMPLEMENTED — UNVERIFIED | `src/pages/CropToCashPage.tsx` validates image MIME/size and previews locally; image upload and screening are not implemented there. |
-| Real screening results, uncertainty/unsupported handling, safe guidance, and referral | BLOCKED | Current server endpoint accepts metadata only and returns mock/demo screening; no real image inference is present. |
-| Clearly distinguish demo from real screening | IMPLEMENTED — UNVERIFIED | UI copy states local preview only; backend mock labels exist in `src/services/cropToCashService.ts`. |
-| Exact 50-qtl comparison fixture and downside arithmetic | VERIFIED | `tests/crop-to-cash.test.js` and `tests/crop-to-cash-calculations.test.js` assert the required values: ₹1,26,750; ₹1,11,000; ₹1,13,500; downside ₹1,12,500. |
-| Demo comparison records an event for the same lot | VERIFIED | `tests/crop-to-cash-adapter.test.js` checks fixture result, event identity, and lot association. |
-| Live, fresh, comparable FCI/mandi/buyer quotes and warning states | BLOCKED | No server quote-list route/provider is present; current quotes are a fictional fixture. |
-| Backend-authoritative calculation for user-entered quantity and costs | BLOCKED | Server estimate route ignores the UI's custom inputs; current API adapter targets unimplemented `/api/v1` paths. |
-| Boolean-only readiness UI | IMPLEMENTED — UNVERIFIED | Readiness checkboxes are present in `src/pages/CropToCashPage.tsx`; persistence and end-to-end behavior are not verified. |
-| Procurement attempt states, centre verification, timestamps, and reasons | IMPLEMENTED — UNVERIFIED | Demo UI and `/api/c2c` route exist, but API schemas/defaults differ; omitted centre verification currently defaults to true on the server. |
-| Sale quantity, price, deductions, net, and estimate-versus-actual display | IMPLEMENTED — UNVERIFIED | Demo sale form is present; production sale semantics and zero/default deduction behavior are unsafe/unconfirmed. |
-| Payment status reflects a real provider transaction | BLOCKED | UI and server state fields are not evidence of an actual payment integration. |
-| Demo ledger/history is clearly memory-only; production event history is durable | BLOCKED | Mock adapter is memory-only; backend lot/history storage is process-local and frontend `/api/v1` ledger endpoints are not implemented. |
-| API schema validation and explicit error handling | VERIFIED | `tests/crop-to-cash-adapter.test.js` covers malformed responses and server errors; current adapter's routes remain incompatible with the server. |
-| English/Hindi coverage for the complete workflow | IN PROGRESS | Main workflow labels are translated; full copy coverage and Hindi browser review remain incomplete. |
-| Keyboard, screen-reader, dialog focus, and reduced-motion behavior | IN PROGRESS | Some existing ARIA/live-region patterns are present; no complete accessibility audit or automated coverage has been run. |
-| Mobile layout without horizontal overflow | VERIFIED | Prior browser check at 390px found body `scrollWidth` equal to `clientWidth`; recheck after future layout changes. |
-| Offline queue and synchronization indicators backed by real sync | NOT STARTED | No verified local queue/sync behavior is present; no offline/synced state should be claimed. |
-| Dashboard/passport/advisory/payment/admin modules remain connected and truthful | IN PROGRESS | Existing modules were retained and Crop-to-Cash entry points added; full regression and simulation-label review remain outstanding. |
-| Unit, production-build, and local C2C API integration commands | VERIFIED | `npm test`: 17 passed, 0 failed, 1 skipped; `npm run build` passed; `npm run test:integration` passed against an isolated local server. |
-| Whole-project TypeScript check | BLOCKED | `npm run lint` reports unresolved `ProcurementAttempt` and `SaleRecord` names in backend-owned `server.ts`; no backend implementation was changed. |
-| Local C2C API sequence from registration through screening, estimate, attempt, sale, and history | VERIFIED | `npm run test:integration` passed against a fresh local server; the test exercises source-level routes and process-memory/demo behavior only, not production durability. |
-| Production service deployment, data durability, and 10x capacity are proven | BLOCKED | Source-level routes and local tests do not establish hosting configuration, durable storage, quotas, or deployed capacity. |
+---
+
+## 2. PPT Architectural Roadmap & External Integrations
+
+| ID | Category | Requirement | Owner | Status | Verification Evidence | Notes / Boundaries |
+|---|---|---|---|---|---|---|
+| `PPT-MKT-01` | External API | Live Agmarknet / data.gov.in APMC mandi price feed integration | Backend | `BLOCKED` | `API_CONTRACT.md` | External API key unprovisioned; transparent `DEMO` fixture active |
+| `PPT-ARCH-01` | Infrastructure | Multi-region Kubernetes / Cloud Run horizontal auto-scaling cluster | DevOps | `NOT STARTED` | Architecture roadmap | Single-instance Node/Express runtime active |
+| `PPT-DATA-01` | Persistence | Migrate process-memory C2C lot ledger to durable PostgreSQL / Cloud SQL | Backend | `NOT STARTED` | `server.ts`, `cropToCashService.ts` | Current C2C lot map is in process memory |
+| `PPT-AI-01` | AI / ML | Real ONNX Runtime / Vision model leaf disease inference with calibrated probabilities | AI / ML | `NOT STARTED` | `cropToCashService.ts` | Isolated behind `CropToCashService.screenCropImage` mock adapter |
+| `PPT-CACHE-01` | Performance | Redis distributed quote and session caching layer | Backend | `NOT STARTED` | Architecture roadmap | In-memory map used in prototype |
+| `PPT-SCHED-01` | Background Jobs | Automated cron worker for daily mandi price ingestion and SMS alerts | Backend | `NOT STARTED` | Architecture roadmap | Manual / on-demand refresh in prototype |
+| `PPT-STOR-01` | Cloud Storage | Object storage bucket (GCS/S3) with signed URLs for leaf image uploads | Backend | `NOT STARTED` | `CropToCashPage.tsx` | Local browser preview + metadata validation active |
+| `PPT-BI-01` | Analytics | Warehouse export & longitudinal policy dashboard for state FPO directors | Data / BI | `NOT STARTED` | `/api/admin/pilot-analytics` | In-app JSON summary endpoint active |

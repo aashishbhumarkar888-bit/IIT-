@@ -9,11 +9,22 @@ import {
 } from './serverSession';
 import {
   CropToCashService,
+  DEFAULT_CROP_READINESS,
   ExtendedCropLotRecord,
+  ProcurementAttempt,
+  SaleRecord,
   getExtendedLot,
   saveExtendedLot,
   getAllExtendedLots,
 } from './src/services/cropToCashService';
+import { calculateSellingOptions } from './src/services/cropToCashCalculations';
+import {
+  ComparisonResult,
+  CropLedgerEvent,
+  CropToCashSnapshot,
+  ProcurementState,
+  SellingQuote,
+} from './src/types/cropToCash';
 
 dotenv.config();
 
@@ -1066,6 +1077,51 @@ async function startServer() {
     const updatedLots = [newLot, ...existingLots];
     userCropLotsMap.set(user.email, updatedLots);
 
+    const nowIso = new Date().toISOString();
+    saveExtendedLot({
+      id: newLot.id,
+      ownerEmail: user.email,
+      ownerId: user.id,
+      farmerName: user.name,
+      cropName: newLot.cropName,
+      variety: newLot.variety,
+      grade: newLot.grade,
+      quantityQuintals: newLot.quantityQuintals,
+      harvestDate: newLot.harvestDate,
+      surveyNumber: newLot.surveyNumber,
+      plotAreaHectares: newLot.plotAreaHectares,
+      screeningResults: [],
+      procurementAttempts: [],
+      historyEvents: [
+        {
+          eventId: `EV-${Date.now()}-1`,
+          timestamp: nowIso,
+          actor: user.email,
+          actorRole: user.role,
+          eventType: 'LOT_CREATED',
+          summary: `Crop Lot ${newLot.id} created for ${newLot.quantityQuintals} quintals of ${newLot.cropName}.`,
+          isVerified: false,
+          details: { cropName: newLot.cropName, quantityQuintals: newLot.quantityQuintals },
+        },
+      ],
+      readiness: DEFAULT_CROP_READINESS.map((item) => ({ ...item })),
+      procurementState: 'PLANNED',
+      ledgerEvents: [
+        {
+          eventId: `ev-init-${newLot.id}`,
+          lotId: newLot.id,
+          type: 'READINESS',
+          occurredAt: nowIso,
+          source: 'MANUAL',
+          verification: 'USER_REPORTED',
+          summary: `Crop-to-cash ledger opened for ${newLot.cropName} (${newLot.id}).`,
+          payload: { initialized: true },
+        },
+      ],
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
     recordAudit(
       user.email,
       user.role,
@@ -1162,6 +1218,20 @@ async function startServer() {
           summary: `Crop Lot ${lotId} created for ${qty} quintals of ${cropName}.`,
           isVerified: false,
           details: { cropName, quantityQuintals: qty },
+        },
+      ],
+      readiness: DEFAULT_CROP_READINESS.map((item) => ({ ...item })),
+      procurementState: 'PLANNED',
+      ledgerEvents: [
+        {
+          eventId: `ev-init-${lotId}`,
+          lotId,
+          type: 'READINESS',
+          occurredAt: now,
+          source: 'MANUAL',
+          verification: 'USER_REPORTED',
+          summary: `Crop-to-cash ledger opened for ${cropName.trim()} (${lotId}).`,
+          payload: { initialized: true },
         },
       ],
       createdAt: now,
@@ -1467,6 +1537,657 @@ async function startServer() {
       privacySafeNote: 'Aggregated analytics; individual Aadhaar or raw personal records are never recorded or exposed.',
     });
   });
+
+  // =========================================================================
+  // Crop-to-Cash REST API v1 (/api/v1/lots/*) — Typed Adapter Contract
+  // =========================================================================
+
+  const sendV1Error = (
+    res: Response,
+    status: number,
+    code: string,
+    message: string,
+    retryable = false
+  ) => {
+    res.status(status).json({
+      error: {
+        code,
+        message,
+        retryable,
+      },
+    });
+  };
+
+  const requireUserV1 = (req: Request, res: Response, next: NextFunction) => {
+    const token = extractToken(req);
+    const user = verifySignedToken(token);
+    if (!user) {
+      sendV1Error(
+        res,
+        401,
+        'UNAUTHORIZED',
+        'Authentication required. Please sign in again.',
+        false
+      );
+      return;
+    }
+    (req as Request & { user: ServerUserRecord }).user = user;
+    next();
+  };
+
+  const SEEDED_DEMO_LOT_IDS = new Set([
+    'KS-MP-2025-089',
+    'KS-MP-2025-094',
+    'KS-MH-2025-210',
+  ]);
+
+  const getOwnedLotOrError = (
+    req: Request,
+    res: Response
+  ): ExtendedCropLotRecord | null => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const { lotId } = req.params;
+    const lot = getExtendedLot(lotId);
+
+    if (!lot) {
+      sendV1Error(
+        res,
+        404,
+        'LOT_NOT_FOUND',
+        `Crop lot ${lotId} was not found.`,
+        false
+      );
+      return null;
+    }
+
+    const isSeededDemo = SEEDED_DEMO_LOT_IDS.has(lot.id);
+    if (
+      !isSeededDemo &&
+      lot.ownerEmail !== user.email &&
+      user.role !== 'admin'
+    ) {
+      sendV1Error(
+        res,
+        403,
+        'FORBIDDEN',
+        'Access denied: You do not own this crop lot.',
+        false
+      );
+      return null;
+    }
+
+    return lot;
+  };
+
+  const buildQuotesForLot = (lot: ExtendedCropLotRecord): SellingQuote[] => {
+    const timestamp = '2026-10-18T00:00:00.000Z';
+    return [
+      {
+        option: 'FCI_MSP_REFERENCE',
+        lotId: lot.id,
+        pricePerQuintal: 2585,
+        commodity: lot.cropName || 'Sharbati wheat',
+        grade: lot.grade || 'FAQ (illustrative)',
+        market: 'Illustrative FCI/MSP reference',
+        source: 'Official MSP Reference Schedule (Demo)',
+        timestamp,
+        freshness: 'Demo fixture; not a live quote',
+        provenance: 'DEMO',
+      },
+      {
+        option: 'MANDI',
+        lotId: lot.id,
+        pricePerQuintal: 2300,
+        commodity: lot.cropName || 'Sharbati wheat',
+        grade: lot.grade || 'FAQ (illustrative)',
+        market: 'Illustrative local APMC mandi',
+        source: 'Local Mandi Reference Fixture (Demo)',
+        timestamp,
+        freshness: 'Demo fixture; not a live quote',
+        provenance: 'DEMO',
+        minimumRate: 2200,
+        maximumRate: 2400,
+        modalRate: 2300,
+      },
+      {
+        option: 'DIRECT_BUYER',
+        lotId: lot.id,
+        pricePerQuintal: 2350,
+        commodity: lot.cropName || 'Sharbati wheat',
+        grade: lot.grade || 'FAQ (illustrative)',
+        market: 'Illustrative direct institutional buyer',
+        source: 'Registered Institutional Buyer Fixture (Demo)',
+        timestamp,
+        freshness: 'Demo fixture; not a live quote',
+        provenance: 'DEMO',
+      },
+    ];
+  };
+
+  // V1-1: List authenticated user's owned lots
+  app.get('/api/v1/lots', requireUserV1, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const lots = getAllExtendedLots().filter(
+      (lot) =>
+        lot.ownerEmail === user.email ||
+        user.role === 'admin' ||
+        (user.isDemoAccount && SEEDED_DEMO_LOT_IDS.has(lot.id))
+    );
+    res.json(lots);
+  });
+
+  // V1-2: Create lot with stable ID & init ledger
+  app.post('/api/v1/lots', requireUserV1, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const {
+      cropName,
+      variety,
+      grade,
+      quantityQuintals,
+      harvestDate,
+      surveyNumber,
+    } = req.body || {};
+
+    if (!cropName || typeof cropName !== 'string' || !cropName.trim()) {
+      sendV1Error(res, 400, 'INVALID_INPUT', 'Valid cropName is required.');
+      return;
+    }
+
+    const qty = Math.max(1, Number(quantityQuintals) || 50);
+    const lotId = `KS-LOT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const now = new Date().toISOString();
+
+    const initialEvent: CropLedgerEvent = {
+      eventId: `ev-init-${Date.now()}`,
+      lotId,
+      type: 'READINESS',
+      occurredAt: now,
+      source: 'MANUAL',
+      verification: 'USER_REPORTED',
+      summary: `Crop-to-cash ledger opened for ${cropName.trim()} (${qty} qtl).`,
+      payload: { initialized: true, quantityQtl: qty },
+    };
+
+    const lot: ExtendedCropLotRecord = {
+      id: lotId,
+      ownerEmail: user.email,
+      ownerId: user.id,
+      farmerName: user.name,
+      cropName: cropName.trim(),
+      variety: String(variety || 'Standard FAQ Grade').trim(),
+      grade: String(grade || 'Grade A').trim(),
+      quantityQuintals: qty,
+      harvestDate: String(harvestDate || 'Oct 2026').trim(),
+      surveyNumber: String(surveyNumber || 'Plot-101').trim(),
+      plotAreaHectares: Number((qty * 0.08).toFixed(2)),
+      screeningResults: [],
+      procurementAttempts: [],
+      historyEvents: [
+        {
+          eventId: `EV-${Date.now()}-1`,
+          timestamp: now,
+          actor: user.email,
+          actorRole: user.role,
+          eventType: 'LOT_CREATED',
+          summary: `Crop Lot ${lotId} created for ${qty} quintals of ${cropName.trim()}.`,
+          isVerified: false,
+          details: { cropName: cropName.trim(), quantityQuintals: qty },
+        },
+      ],
+      readiness: DEFAULT_CROP_READINESS.map((item) => ({ ...item })),
+      procurementState: 'PLANNED',
+      ledgerEvents: [initialEvent],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    saveExtendedLot(lot);
+    res.status(201).json(lot);
+  });
+
+  // V1-3: Retrieve single owned lot by ID
+  app.get(
+    '/api/v1/lots/:lotId',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+      res.json(lot);
+    }
+  );
+
+  // V1-4: Retrieve CropToCashSnapshot ledger
+  app.get(
+    '/api/v1/lots/:lotId/ledger',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const snapshot: CropToCashSnapshot = {
+        lotId: lot.id,
+        events: lot.ledgerEvents,
+        readiness: lot.readiness,
+        procurementState: lot.procurementState,
+      };
+      res.json(snapshot);
+    }
+  );
+
+  // V1-5: Retrieve SellingQuotes for lot
+  app.get(
+    '/api/v1/lots/:lotId/quotes',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+      res.json(buildQuotesForLot(lot));
+    }
+  );
+
+  // V1-6: Calculate deterministic comparison & append COMPARISON ledger event
+  app.post(
+    '/api/v1/lots/:lotId/comparisons',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const user = (req as Request & { user: ServerUserRecord }).user;
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const { quantityQtl, costs } = req.body || {};
+      const qty = Number(quantityQtl ?? lot.quantityQuintals);
+      const safeCosts = {
+        fciCosts: Number(costs?.fciCosts ?? 2500),
+        mandiCosts: Number(costs?.mandiCosts ?? 4000),
+        directCosts: Number(costs?.directCosts ?? 4000),
+        extraTripCost: Number(costs?.extraTripCost ?? 1000),
+      };
+
+      const quotes = buildQuotesForLot(lot);
+      const calc = calculateSellingOptions(qty, quotes, safeCosts);
+      if (calc.error) {
+        sendV1Error(res, 422, 'INVALID_COMPARISON_INPUT', calc.error, false);
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const event: CropLedgerEvent = {
+        eventId: `cmp-${Date.now()}-${lot.ledgerEvents.length}`,
+        lotId: lot.id,
+        type: 'COMPARISON',
+        occurredAt: now,
+        source: 'ESTIMATED',
+        verification: 'ESTIMATE — not an offer',
+        summary: `Compared selling options for ${qty} qtl.`,
+        payload: {
+          quantityQtl: qty,
+          ...Object.fromEntries(
+            calc.estimates.map((item) => [`${item.option}_net`, item.net])
+          ),
+          downsideNet: calc.downsideNet ?? 0,
+        },
+      };
+
+      lot.ledgerEvents.push(event);
+      lot.latestEstimate = CropToCashService.calculateReturnEstimate(
+        lot.id,
+        qty,
+        {
+          fciTransportCosts: safeCosts.fciCosts,
+          mandiTotalCosts: safeCosts.mandiCosts,
+          directTotalCosts: safeCosts.directCosts,
+          downsideTripCost: safeCosts.extraTripCost,
+        }
+      );
+      lot.updatedAt = now;
+      lot.historyEvents.push({
+        eventId: event.eventId,
+        timestamp: now,
+        actor: user.email,
+        actorRole: user.role,
+        eventType: 'ESTIMATE_GENERATED',
+        summary: event.summary,
+        isVerified: true,
+        details: event.payload,
+      });
+
+      saveExtendedLot(lot);
+
+      const result: ComparisonResult = {
+        lotId: lot.id,
+        calculationVersion: 'v2.0-deterministic',
+        estimates: calc.estimates,
+        downsideNet: calc.downsideNet,
+        event,
+      };
+      res.json(result);
+    }
+  );
+
+  // V1-7: Record boolean readiness item (privacy-safe: rejects Aadhaar or raw PII)
+  app.post(
+    '/api/v1/lots/:lotId/readiness',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const body = req.body || {};
+      const payload = body.payload || {};
+      if (
+        'aadhaar' in body ||
+        'aadhaarNumber' in body ||
+        'aadhaar' in payload ||
+        'aadhaarNumber' in payload
+      ) {
+        sendV1Error(
+          res,
+          400,
+          'PRIVACY_VIOLATION',
+          'Aadhaar numbers and identity document scans are strictly prohibited. Submit boolean readiness flags only.',
+          false
+        );
+        return;
+      }
+
+      const readinessId = String(
+        payload.readinessId || body.readinessId || 'registration'
+      );
+      const ready = Boolean(payload.ready ?? body.ready);
+      const now = new Date().toISOString();
+
+      lot.readiness = lot.readiness.map((item) =>
+        item.id === readinessId ? { ...item, ready } : item
+      );
+
+      const created: CropLedgerEvent = {
+        eventId: `rdy-${Date.now()}-${lot.ledgerEvents.length}`,
+        lotId: lot.id,
+        type: 'READINESS',
+        occurredAt: now,
+        source:
+          body.source === 'VERIFIED' ||
+          body.source === 'ESTIMATED' ||
+          body.source === 'CACHED' ||
+          body.source === 'MANUAL' ||
+          body.source === 'DEMO'
+            ? body.source
+            : 'MANUAL',
+        verification: String(body.verification || 'USER_REPORTED'),
+        summary: String(
+          body.summary ||
+            `${readinessId} readiness marked ${ready ? 'yes' : 'no'}.`
+        ),
+        payload: {
+          readinessId,
+          ready,
+        },
+      };
+
+      lot.ledgerEvents.push(created);
+      lot.updatedAt = now;
+      saveExtendedLot(lot);
+
+      res.status(201).json(created);
+    }
+  );
+
+  // V1-8: Record procurement visit / attempt state
+  const VALID_PROCUREMENT_STATES = new Set<ProcurementState>([
+    'PLANNED',
+    'VISITED',
+    'ACCEPTED',
+    'PENDING',
+    'REJECTED',
+    'RESCHEDULED',
+    'NOT_COMPLETED',
+  ]);
+
+  app.post(
+    '/api/v1/lots/:lotId/procurement-attempts',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const user = (req as Request & { user: ServerUserRecord }).user;
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const body = req.body || {};
+      const payload = body.payload || {};
+      const stateRaw = String(
+        payload.state || body.state || body.outcome || 'VISITED'
+      ) as ProcurementState;
+
+      if (!VALID_PROCUREMENT_STATES.has(stateRaw)) {
+        sendV1Error(
+          res,
+          422,
+          'INVALID_PROCUREMENT_STATE',
+          `Invalid procurement state: ${stateRaw}`,
+          false
+        );
+        return;
+      }
+
+      const reason = String(payload.reason || body.reason || '').slice(0, 240);
+      const now = new Date().toISOString();
+
+      lot.procurementState = stateRaw;
+
+      const created: CropLedgerEvent = {
+        eventId: `prc-${Date.now()}-${lot.ledgerEvents.length}`,
+        lotId: lot.id,
+        type: 'PROCUREMENT',
+        occurredAt: now,
+        source:
+          body.source === 'VERIFIED' ||
+          body.source === 'ESTIMATED' ||
+          body.source === 'CACHED' ||
+          body.source === 'MANUAL' ||
+          body.source === 'DEMO'
+            ? body.source
+            : 'MANUAL',
+        verification: String(body.verification || 'FARMER_REPORTED'),
+        summary: String(
+          body.summary ||
+            `Procurement attempt marked ${stateRaw}.${reason ? ` Reason: ${reason}` : ''}`
+        ),
+        payload: {
+          state: stateRaw,
+          reason,
+        },
+      };
+
+      lot.ledgerEvents.push(created);
+      lot.procurementAttempts.push({
+        attemptId: created.eventId,
+        lotId: lot.id,
+        attemptTimestamp: now,
+        reporter: user.email,
+        reporterRole: user.role,
+        centreId: String(payload.centreId || 'FCI-CENTRE-01'),
+        centreName: String(
+          payload.centreName || 'Khandwa Central Grain Mandi Centre'
+        ),
+        isCentreVerified: Boolean(payload.isCentreVerified ?? false),
+        outcome:
+          stateRaw === 'PLANNED' || stateRaw === 'VISITED'
+            ? 'PENDING'
+            : stateRaw,
+        outcomeReason: reason || 'Farmer reported procurement update',
+        documentReadiness: {
+          farmerIdPresented:
+            lot.readiness.find((r) => r.id === 'registration')?.ready ?? false,
+          landRecordReady:
+            lot.readiness.find((r) => r.id === 'produce')?.ready ?? false,
+          bankPassbookReady:
+            lot.readiness.find((r) => r.id === 'bank-details')?.ready ?? false,
+          allDocumentsReady: lot.readiness.every((r) => r.ready),
+        },
+      });
+      lot.updatedAt = now;
+      saveExtendedLot(lot);
+
+      res.status(201).json(created);
+    }
+  );
+
+  // V1-9: Record farmer-reported sale & payment status
+  app.post(
+    '/api/v1/lots/:lotId/sales',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const user = (req as Request & { user: ServerUserRecord }).user;
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const body = req.body || {};
+      const payload = body.payload || {};
+      const quantityQtl = Number(
+        payload.quantityQtl ?? body.quantityQtl ?? lot.quantityQuintals
+      );
+      const agreedPricePerQtl = Number(
+        payload.agreedPricePerQtl ?? body.agreedPricePerQtl ?? 2350
+      );
+      const deductions = Number(payload.deductions ?? body.deductions ?? 4000);
+      const actualNet =
+        typeof payload.actualNet === 'number'
+          ? payload.actualNet
+          : Math.round(quantityQtl * agreedPricePerQtl) - deductions;
+      const paymentStatus = String(
+        payload.paymentStatus || body.paymentStatus || 'PENDING'
+      );
+      const estimatedNet =
+        lot.latestEstimate?.options.directBuyer.netReturn ?? 113500;
+      const differenceFromEstimate =
+        typeof payload.differenceFromEstimate === 'number'
+          ? payload.differenceFromEstimate
+          : actualNet - estimatedNet;
+
+      const now = new Date().toISOString();
+      const created: CropLedgerEvent = {
+        eventId: `sal-${Date.now()}-${lot.ledgerEvents.length}`,
+        lotId: lot.id,
+        type: 'SALE',
+        occurredAt: now,
+        source:
+          body.source === 'VERIFIED' ||
+          body.source === 'ESTIMATED' ||
+          body.source === 'CACHED' ||
+          body.source === 'MANUAL' ||
+          body.source === 'DEMO'
+            ? body.source
+            : 'MANUAL',
+        verification: String(body.verification || 'FARMER_REPORTED'),
+        summary: String(
+          body.summary ||
+            `Sale reported: ${quantityQtl} qtl at ₹${agreedPricePerQtl}/qtl; actual net ₹${actualNet}.`
+        ),
+        payload: {
+          quantityQtl,
+          agreedPricePerQtl,
+          deductions,
+          actualNet,
+          paymentStatus,
+          differenceFromEstimate,
+        },
+      };
+
+      lot.ledgerEvents.push(created);
+      lot.saleRecord = {
+        saleId: created.eventId,
+        lotId: lot.id,
+        buyerName: String(payload.buyerName || 'Direct Institutional Buyer'),
+        buyerType: 'INSTITUTIONAL_BUYER',
+        acceptedQuantityQuintals: quantityQtl,
+        actualPricePerQuintal: agreedPricePerQtl,
+        actualGrossAmount: Math.round(quantityQtl * agreedPricePerQtl),
+        actualDeductions: {
+          transport: deductions,
+          loading: 0,
+          handling: 0,
+          fees: 0,
+          discrepancyDeduction: 0,
+          totalDeductions: deductions,
+        },
+        actualNetAmount: actualNet,
+        paymentStatus:
+          paymentStatus === 'PAID'
+            ? 'FULLY_SETTLED'
+            : paymentStatus === 'DISPUTED'
+              ? 'PAYMENT_FAILED'
+              : 'AWAITING_PAYMENT',
+        settledAt: now,
+        estimatedVsActualGap: {
+          estimatedNet,
+          actualNet,
+          variance: differenceFromEstimate,
+        },
+      };
+      lot.updatedAt = now;
+      lot.historyEvents.push({
+        eventId: created.eventId,
+        timestamp: now,
+        actor: user.email,
+        actorRole: user.role,
+        eventType: 'SALE_RECORDED',
+        summary: created.summary,
+        isVerified: false,
+        details: created.payload,
+      });
+
+      saveExtendedLot(lot);
+      res.status(201).json(created);
+    }
+  );
+
+  // V1-10: Submit leaf screening with >10MB rejection & zero pesticide prescription
+  app.post(
+    '/api/v1/lots/:lotId/screenings',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const user = (req as Request & { user: ServerUserRecord }).user;
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const { imageFormat, imageSizeBytes, cropDeclared } = req.body || {};
+      const result = CropToCashService.screenCropImage({
+        lotId: lot.id,
+        imageFormat: imageFormat || 'jpeg',
+        imageSizeBytes: Number(imageSizeBytes) || 1024 * 300,
+        cropDeclared: cropDeclared || lot.cropName,
+      });
+
+      if (result.outcomeCategory === 'IMAGE_QUALITY_REJECTED') {
+        sendV1Error(
+          res,
+          422,
+          'IMAGE_QUALITY_REJECTED',
+          result.abstentionReason || 'Image quality or size rejected.',
+          false
+        );
+        return;
+      }
+
+      lot.screeningResults.push(result);
+      lot.updatedAt = new Date().toISOString();
+      lot.historyEvents.push({
+        eventId: result.screeningId,
+        timestamp: lot.updatedAt,
+        actor: user.email,
+        actorRole: user.role,
+        eventType: 'SCREENING_PERFORMED',
+        summary: `Crop screening performed: ${result.outcomeCategory}`,
+        isVerified: false,
+        details: {
+          outcomeCategory: result.outcomeCategory,
+          isMockOrDemo: result.isMockOrDemo,
+        },
+      });
+      saveExtendedLot(lot);
+
+      res.status(201).json(result);
+    }
+  );
 
   // 3d. Safe Reset of Demo Dataset Only (Does NOT affect real user accounts or personal lots)
   app.post('/api/demo/reset', (req: Request, res: Response) => {

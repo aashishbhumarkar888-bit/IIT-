@@ -10,7 +10,7 @@ export const AuthPage: React.FC = () => {
     navigate,
     language,
     setLanguage,
-    setAdminDialogOpen,
+    t,
   } = useKisan();
 
   const {
@@ -167,12 +167,14 @@ export const AuthPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <div
               role="group"
-              aria-label="Language switcher"
+              aria-label={t('Language switcher', 'भाषा चयनकर्ता')}
               className="flex items-center bg-[#E8EAF6] p-0.5 rounded-lg border border-[#000080]/20"
             >
               <button
                 type="button"
                 onClick={() => setLanguage('en')}
+                aria-pressed={language === 'en'}
+                aria-label={t('Switch language to English', 'अंग्रेज़ी भाषा चुनें')}
                 className={`px-2.5 py-1 rounded text-xs font-extrabold min-h-[34px] transition-colors ${
                   language === 'en'
                     ? 'bg-[#000080] text-white'
@@ -184,6 +186,8 @@ export const AuthPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setLanguage('hi')}
+                aria-pressed={language === 'hi'}
+                aria-label={t('Switch language to Hindi', 'हिंदी भाषा चुनें')}
                 className={`px-2.5 py-1 rounded text-xs font-extrabold font-hindi min-h-[34px] transition-colors ${
                   language === 'hi'
                     ? 'bg-[#000080] text-white'
@@ -193,18 +197,6 @@ export const AuthPage: React.FC = () => {
                 हिंदी
               </button>
             </div>
-
-            <button
-              type="button"
-              onClick={() => setAdminDialogOpen(true)}
-              title="Administrator Access (Ctrl + Shift + A)"
-              className="px-3 py-1.5 rounded-lg bg-white hover:bg-[#E8EAF6] text-[#000080] border border-[#000080]/30 text-xs font-extrabold flex items-center gap-1 min-h-[36px]"
-            >
-              <span className="material-symbols-outlined text-[16px]">
-                admin_panel_settings
-              </span>
-              <span className="hidden sm:inline">Admin</span>
-            </button>
           </div>
         </div>
       </header>
@@ -761,10 +753,16 @@ export const AuthPage: React.FC = () => {
       <footer className="w-full border-t border-[#000080]/15 py-3 px-4 sm:px-8 text-center sm:text-left">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-black font-semibold">
           <span>
-            © 2026 Kisan-SPO • Smart Procurement &amp; Lifecycle Orchestration
+            {t(
+              '© 2026 Kisan-SPO • Smart Procurement & Lifecycle Orchestration',
+              '© 2026 किसान-एसपीओ • स्मार्ट खरीद और फसल जीवनचक्र प्रबंधन'
+            )}
           </span>
-          <span className="font-tabular text-[11px] text-[#000080] font-bold">
-            Admin Shortcut: Ctrl + Shift + A (Cmd + Shift + A on macOS)
+          <span className="font-tabular text-[11px] text-[#006B3C] font-bold">
+            {t(
+              '256-Bit SSL • Digital India AgriStack Verified',
+              '256-बिट सुरक्षित • डिजिटल इंडिया एग्रीस्टैक सत्यापित'
+            )}
           </span>
         </div>
       </footer>
