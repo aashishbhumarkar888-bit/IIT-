@@ -7,6 +7,13 @@ import {
   createSignedToken as createStatelessSignedToken,
   verifySignedToken as verifyStatelessSignedToken,
 } from './serverSession';
+import {
+  CropToCashService,
+  ExtendedCropLotRecord,
+  getExtendedLot,
+  saveExtendedLot,
+  getAllExtendedLots,
+} from './src/services/cropToCashService';
 
 dotenv.config();
 
@@ -952,6 +959,393 @@ async function startServer() {
     });
   });
 
+  // =========================================================================
+  // Crop-to-Cash End-to-End Flow Endpoints
+  // =========================================================================
+
+  // Helper middleware for authenticated lot access
+  const requireUser = (req: Request, res: Response, next: NextFunction) => {
+    const token = extractToken(req);
+    const user = verifySignedToken(token);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    (req as Request & { user: ServerUserRecord }).user = user;
+    next();
+  };
+
+  // Helper middleware for requireAdmin
+  const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
+    const token = extractToken(req);
+    const user = verifySignedToken(token);
+    if (!user) {
+      res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (user.role !== 'admin') {
+      recordAudit(
+        user.email,
+        user.role,
+        'ADMIN_API_REJECTED',
+        req.originalUrl,
+        'Non-admin user attempted to invoke protected administrative endpoint.',
+        'DENIED'
+      );
+      res.status(403).json({
+        error:
+          'Forbidden: Administrative privileges are required for this operation.',
+      });
+      return;
+    }
+    (req as Request & { adminUser?: ServerUserRecord }).adminUser = user;
+    next();
+  };
+
+  // C2C-1: Create a tracked Crop Lot
+  app.post('/api/c2c/lots', requireUser, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const { cropName, variety, grade, quantityQuintals, harvestDate, surveyNumber } = req.body || {};
+
+    if (!cropName || typeof cropName !== 'string') {
+      res.status(400).json({ error: 'Valid cropName is required.' });
+      return;
+    }
+
+    const qty = Math.max(1, Number(quantityQuintals) || 50);
+    const lotId = `KS-LOT-${Date.now()}`;
+    const now = new Date().toISOString();
+
+    const lot: ExtendedCropLotRecord = {
+      id: lotId,
+      ownerEmail: user.email,
+      ownerId: user.id,
+      farmerName: user.name,
+      cropName: cropName.trim(),
+      variety: String(variety || 'Standard FAQ Grade').trim(),
+      grade: String(grade || 'Grade A').trim(),
+      quantityQuintals: qty,
+      harvestDate: String(harvestDate || 'Oct 2026').trim(),
+      surveyNumber: String(surveyNumber || 'Plot-101').trim(),
+      plotAreaHectares: Number((qty * 0.08).toFixed(2)),
+      screeningResults: [],
+      procurementAttempts: [],
+      historyEvents: [
+        {
+          eventId: `EV-${Date.now()}-1`,
+          timestamp: now,
+          actor: user.email,
+          actorRole: user.role,
+          eventType: 'LOT_CREATED',
+          summary: `Crop Lot ${lotId} created for ${qty} quintals of ${cropName}.`,
+          isVerified: false,
+          details: { cropName, quantityQuintals: qty },
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    saveExtendedLot(lot);
+    recordAudit(user.email, user.role, 'C2C_LOT_CREATED', lotId, `Created lot with ${qty} quintals.`, 'SUCCESS');
+    res.status(201).json(lot);
+  });
+
+  // C2C-2: Retrieve Lot by ID (with ownership check)
+  app.get('/api/c2c/lots/:lotId', requireUser, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const { lotId } = req.params;
+    const lot = getExtendedLot(lotId);
+
+    if (!lot) {
+      res.status(404).json({ error: 'Crop lot not found.' });
+      return;
+    }
+
+    if (lot.ownerEmail !== user.email && user.role !== 'admin') {
+      res.status(403).json({ error: 'Access denied: You do not own this crop lot.' });
+      return;
+    }
+
+    res.json(lot);
+  });
+
+  // C2C-3: Submit a crop screening (with abstention & image validation)
+  app.post('/api/c2c/lots/:lotId/screening', requireUser, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const { lotId } = req.params;
+    const lot = getExtendedLot(lotId);
+
+    if (!lot) {
+      res.status(404).json({ error: 'Crop lot not found.' });
+      return;
+    }
+
+    if (lot.ownerEmail !== user.email && user.role !== 'admin') {
+      res.status(403).json({ error: 'Access denied: You do not own this crop lot.' });
+      return;
+    }
+
+    const { imageFormat, imageSizeBytes, cropDeclared } = req.body || {};
+    const screeningResult = CropToCashService.screenCropImage({
+      lotId,
+      imageFormat: imageFormat || 'jpeg',
+      imageSizeBytes: Number(imageSizeBytes) || 1024 * 300,
+      cropDeclared: cropDeclared || lot.cropName,
+    });
+
+    lot.screeningResults.push(screeningResult);
+    lot.updatedAt = new Date().toISOString();
+    lot.historyEvents.push({
+      eventId: `EV-${Date.now()}-SCR`,
+      timestamp: lot.updatedAt,
+      actor: user.email,
+      actorRole: user.role,
+      eventType: 'SCREENING_PERFORMED',
+      summary: `Crop screening performed: ${screeningResult.outcomeCategory} (${screeningResult.topClass?.className || 'None'})`,
+      isVerified: false,
+      details: { outcome: screeningResult.outcomeCategory, isMock: screeningResult.isMockOrDemo },
+    });
+
+    saveExtendedLot(lot);
+    res.json(screeningResult);
+  });
+
+  // C2C-4: Calculate Return Estimate (Deterministic calculation engine)
+  app.post('/api/c2c/lots/:lotId/estimate', requireUser, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const { lotId } = req.params;
+    const lot = getExtendedLot(lotId);
+
+    if (!lot) {
+      res.status(404).json({ error: 'Crop lot not found.' });
+      return;
+    }
+
+    if (lot.ownerEmail !== user.email && user.role !== 'admin') {
+      res.status(403).json({ error: 'Access denied: You do not own this crop lot.' });
+      return;
+    }
+
+    const estimate = CropToCashService.calculateReturnEstimate(lot.id, lot.quantityQuintals);
+    lot.latestEstimate = estimate;
+    lot.updatedAt = new Date().toISOString();
+    lot.historyEvents.push({
+      eventId: `EV-${Date.now()}-EST`,
+      timestamp: lot.updatedAt,
+      actor: user.email,
+      actorRole: user.role,
+      eventType: 'ESTIMATE_GENERATED',
+      summary: `Financial estimate generated (${estimate.calculationVersion}): FCI ₹${estimate.options.fciMsp.netReturn}, Mandi ₹${estimate.options.mandi.netReturn}, Direct ₹${estimate.options.directBuyer.netReturn}`,
+      isVerified: true,
+      details: {
+        fciNet: estimate.options.fciMsp.netReturn,
+        mandiNet: estimate.options.mandi.netReturn,
+        directNet: estimate.options.directBuyer.netReturn,
+        downsideNet: estimate.options.downsideFallback.netReturn,
+      },
+    });
+
+    saveExtendedLot(lot);
+    res.json(estimate);
+  });
+
+  // C2C-5: Record Procurement Attempt / Outcome
+  app.post('/api/c2c/lots/:lotId/procurement-attempt', requireUser, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const { lotId } = req.params;
+    const lot = getExtendedLot(lotId);
+
+    if (!lot) {
+      res.status(404).json({ error: 'Crop lot not found.' });
+      return;
+    }
+
+    if (lot.ownerEmail !== user.email && user.role !== 'admin' && user.role !== 'agent') {
+      res.status(403).json({ error: 'Access denied: Unauthorized to record procurement attempt.' });
+      return;
+    }
+
+    const {
+      centreId,
+      centreName,
+      isCentreVerified,
+      outcome,
+      outcomeReason,
+      farmerIdPresented,
+      landRecordReady,
+      bankPassbookReady,
+    } = req.body || {};
+
+    const allDocs = Boolean(farmerIdPresented && landRecordReady && bankPassbookReady);
+    const attempt: ProcurementAttempt = {
+      attemptId: `ATT-${Date.now()}`,
+      lotId,
+      attemptTimestamp: new Date().toISOString(),
+      reporter: user.email,
+      reporterRole: user.role,
+      centreId: String(centreId || 'FCI-CENTRE-01'),
+      centreName: String(centreName || 'Khandwa Central Grain Mandi Centre'),
+      isCentreVerified: Boolean(isCentreVerified ?? true),
+      outcome: outcome || 'ACCEPTED',
+      outcomeReason: outcomeReason || 'Standard inspection passed',
+      documentReadiness: {
+        farmerIdPresented: Boolean(farmerIdPresented),
+        landRecordReady: Boolean(landRecordReady),
+        bankPassbookReady: Boolean(bankPassbookReady),
+        allDocumentsReady: allDocs,
+      },
+    };
+
+    lot.procurementAttempts.push(attempt);
+    lot.updatedAt = new Date().toISOString();
+    lot.historyEvents.push({
+      eventId: `EV-${Date.now()}-ATT`,
+      timestamp: lot.updatedAt,
+      actor: user.email,
+      actorRole: user.role,
+      eventType: 'PROCUREMENT_ATTEMPT',
+      summary: `Procurement visit at ${attempt.centreName}: outcome ${attempt.outcome}.`,
+      isVerified: attempt.isCentreVerified,
+      details: { outcome: attempt.outcome, reason: attempt.outcomeReason, allDocs },
+    });
+
+    saveExtendedLot(lot);
+    res.status(201).json(attempt);
+  });
+
+  // C2C-6: Record Actual Sale & Payment Status
+  app.post('/api/c2c/lots/:lotId/sale', requireUser, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const { lotId } = req.params;
+    const lot = getExtendedLot(lotId);
+
+    if (!lot) {
+      res.status(404).json({ error: 'Crop lot not found.' });
+      return;
+    }
+
+    if (lot.ownerEmail !== user.email && user.role !== 'admin' && user.role !== 'buyer' && user.role !== 'agent') {
+      res.status(403).json({ error: 'Access denied.' });
+      return;
+    }
+
+    const {
+      buyerName,
+      buyerType,
+      acceptedQuantityQuintals,
+      actualPricePerQuintal,
+      actualTransportDeduction,
+      actualHandlingDeduction,
+      actualFeesDeduction,
+      paymentStatus,
+    } = req.body || {};
+
+    const acceptedQty = Math.max(1, Number(acceptedQuantityQuintals) || lot.quantityQuintals);
+    const price = Math.max(1, Number(actualPricePerQuintal) || 2350);
+    const gross = Math.round(acceptedQty * price);
+
+    const transport = Math.max(0, Number(actualTransportDeduction) || 2500);
+    const handling = Math.max(0, Number(actualHandlingDeduction) || 1000);
+    const fees = Math.max(0, Number(actualFeesDeduction) || 500);
+    const totalDeductions = transport + handling + fees;
+    const actualNet = gross - totalDeductions;
+
+    const estimatedNet = lot.latestEstimate?.options.directBuyer.netReturn ?? 113500;
+    const gapVariance = actualNet - estimatedNet;
+
+    const sale: SaleRecord = {
+      saleId: `SALE-${Date.now()}`,
+      lotId,
+      buyerName: String(buyerName || 'ITC Choupal Sagar Aggregator'),
+      buyerType: buyerType || 'INSTITUTIONAL_BUYER',
+      acceptedQuantityQuintals: acceptedQty,
+      actualPricePerQuintal: price,
+      actualGrossAmount: gross,
+      actualDeductions: {
+        transport,
+        loading: handling,
+        handling: 0,
+        fees,
+        discrepancyDeduction: 0,
+        totalDeductions,
+      },
+      actualNetAmount: actualNet,
+      paymentStatus: paymentStatus || 'FIRST_INSTALLMENT_PAID',
+      settledAt: new Date().toISOString(),
+      estimatedVsActualGap: {
+        estimatedNet,
+        actualNet,
+        variance: gapVariance,
+      },
+    };
+
+    lot.saleRecord = sale;
+    lot.updatedAt = new Date().toISOString();
+    lot.historyEvents.push({
+      eventId: `EV-${Date.now()}-SALE`,
+      timestamp: lot.updatedAt,
+      actor: user.email,
+      actorRole: user.role,
+      eventType: 'SALE_RECORDED',
+      summary: `Sale finalized with ${sale.buyerName}: Gross ₹${sale.actualGrossAmount}, Net ₹${sale.actualNetAmount}, Status: ${sale.paymentStatus}`,
+      isVerified: true,
+      details: { actualNetAmount: actualNet, paymentStatus: sale.paymentStatus, gapVariance },
+    });
+
+    saveExtendedLot(lot);
+    res.status(201).json(sale);
+  });
+
+  // C2C-7: Admin Analytics (Privacy-Safe aggregates with sample size n & reporting period)
+  app.get('/api/admin/pilot-analytics', requireAdmin, (_req: Request, res: Response) => {
+    const allLots = getAllExtendedLots();
+    const totalLots = allLots.length;
+
+    let totalGrossSales = 0;
+    let totalNetSales = 0;
+    let totalAttempts = 0;
+    const attemptsByOutcome: Record<string, number> = {
+      ACCEPTED: 0,
+      REJECTED: 0,
+      PENDING: 0,
+      RESCHEDULED: 0,
+      NOT_COMPLETED: 0,
+    };
+    const paymentStatusDistribution: Record<string, number> = {
+      AWAITING_PAYMENT: 0,
+      FIRST_INSTALLMENT_PAID: 0,
+      FULLY_SETTLED: 0,
+      PAYMENT_FAILED: 0,
+    };
+
+    allLots.forEach((lot) => {
+      lot.procurementAttempts.forEach((att) => {
+        totalAttempts++;
+        attemptsByOutcome[att.outcome] = (attemptsByOutcome[att.outcome] || 0) + 1;
+      });
+      if (lot.saleRecord) {
+        totalGrossSales += lot.saleRecord.actualGrossAmount;
+        totalNetSales += lot.saleRecord.actualNetAmount;
+        paymentStatusDistribution[lot.saleRecord.paymentStatus] =
+          (paymentStatusDistribution[lot.saleRecord.paymentStatus] || 0) + 1;
+      }
+    });
+
+    res.json({
+      reportingPeriod: 'Kharif-Rabi Pilot 2026',
+      sampleSizeN: totalLots,
+      totalProcurementAttempts: totalAttempts,
+      attemptsByOutcome,
+      financialAggregates: {
+        totalGrossSalesINR: totalGrossSales,
+        totalNetSalesINR: totalNetSales,
+      },
+      paymentStatusDistribution,
+      privacySafeNote: 'Aggregated analytics; individual Aadhaar or raw personal records are never recorded or exposed.',
+    });
+  });
+
   // 3d. Safe Reset of Demo Dataset Only (Does NOT affect real user accounts or personal lots)
   app.post('/api/demo/reset', (req: Request, res: Response) => {
     const token = extractToken(req);
@@ -1110,33 +1504,6 @@ async function startServer() {
     }
     res.json({ success: true });
   });
-
-  // Middleware: Require Admin Role at Server Boundary
-  const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
-    const token = extractToken(req);
-    const user = verifySignedToken(token);
-    if (!user) {
-      res.status(401).json({ error: 'Authentication required.' });
-      return;
-    }
-    if (user.role !== 'admin') {
-      recordAudit(
-        user.email,
-        user.role,
-        'ADMIN_API_REJECTED',
-        req.originalUrl,
-        'Non-admin user attempted to invoke protected administrative endpoint.',
-        'DENIED'
-      );
-      res.status(403).json({
-        error:
-          'Forbidden: Administrative privileges are required for this operation.',
-      });
-      return;
-    }
-    (req as Request & { adminUser?: ServerUserRecord }).adminUser = user;
-    next();
-  };
 
   // 8. Admin Overview & Records
   app.get('/api/admin/dashboard', requireAdmin, (_req: Request, res: Response) => {
