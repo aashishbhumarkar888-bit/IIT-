@@ -56,7 +56,15 @@ const initialCosts = {
 };
 
 export const CropToCashPage: React.FC = () => {
-  const { currentLot, language, navigate, token, t } = useKisan();
+  const {
+    currentLot,
+    allLots,
+    setSelectedLotId,
+    language,
+    navigate,
+    token,
+    t,
+  } = useKisan();
   const [tab, setTab] = useState<WorkflowTab>('detect');
   const [snapshot, setSnapshot] = useState<CropToCashSnapshot | null>(null);
   const [quotes, setQuotes] = useState<SellingQuote[]>([]);
@@ -379,17 +387,26 @@ export const CropToCashPage: React.FC = () => {
               'एक फसल लॉट। एक जुड़ी हुई यात्रा।'
             )}
           </h1>
-          <p className="mt-1 text-sm font-semibold text-black/80">
-            <span>{currentLot.cropName}</span>
-            <span aria-hidden="true"> · </span>
-            <span className="font-tabular">
-              {currentLot.quantityQuintals} {t('qtl', 'क्विंटल')}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <label className="text-xs font-bold text-[#000080] flex items-center gap-1.5">
+              <span>{t('Active Crop Lot:', 'सक्रिय फसल लॉट:')}</span>
+              <select
+                value={currentLot.id}
+                onChange={(e) => setSelectedLotId(e.target.value)}
+                aria-label={t('Select active crop lot', 'सक्रिय फसल लॉट चुनें')}
+                className="rounded-lg border-2 border-[#000080]/30 bg-white px-2.5 py-1 text-xs font-extrabold text-[#000080] focus:outline-none focus:ring-2 focus:ring-[#000080]"
+              >
+                {allLots.map((lot) => (
+                  <option key={lot.id} value={lot.id}>
+                    {lot.cropName} ({lot.quantityQuintals} {t('qtl', 'क्विंटल')}) — {lot.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="text-xs font-semibold text-black/60 font-mono">
+              [{currentLot.variety}]
             </span>
-            <span aria-hidden="true"> · </span>
-            <span className="font-mono text-[#000080] font-bold">
-              {currentLot.id}
-            </span>
-          </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
           <button

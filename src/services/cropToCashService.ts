@@ -455,8 +455,44 @@ export class CropToCashService {
   }
 }
 
-// In-Memory storage of Extended Crop Lots keyed by lot ID
+// Durable File-backed and in-memory storage of Extended Crop Lots keyed by lot ID
+import fs from 'node:fs';
+import path from 'node:path';
+
 const extendedCropLots = new Map<string, ExtendedCropLotRecord>();
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DATA_FILE = path.join(DATA_DIR, 'extended_lots.json');
+
+function persistExtendedLotsToDisk(): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const serialized = JSON.stringify(Array.from(extendedCropLots.values()), null, 2);
+    fs.writeFileSync(DATA_FILE, serialized, 'utf-8');
+  } catch (err) {
+    // Graceful fallback for non-writable environments
+    console.warn('[cropToCashService] Persistence to disk skipped:', err);
+  }
+}
+
+function loadExtendedLotsFromDisk(): void {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        for (const lot of list) {
+          if (lot && typeof lot.id === 'string') {
+            extendedCropLots.set(lot.id, lot);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[cropToCashService] Failed loading persisted lots from disk:', err);
+  }
+}
 
 function seedDefaultDemoLot(
   id: string,
@@ -464,6 +500,7 @@ function seedDefaultDemoLot(
   variety: string,
   quantityQuintals: number
 ): void {
+  if (extendedCropLots.has(id)) return;
   const now = '2026-10-18T00:00:00.000Z';
   extendedCropLots.set(id, {
     id,
@@ -510,9 +547,12 @@ function seedDefaultDemoLot(
   });
 }
 
+// Initialize on boot: load from disk, ensure demo lots seeded, then persist
+loadExtendedLotsFromDisk();
 seedDefaultDemoLot('KS-MP-2025-089', 'Sharbati Wheat', 'HI-1544 Sharbati', 50);
 seedDefaultDemoLot('KS-MP-2025-094', 'Soybean', 'JS-2034 High Oil', 42);
 seedDefaultDemoLot('KS-MH-2025-210', 'Medium Staple Cotton', 'Bt-Hybrid H4', 35);
+persistExtendedLotsToDisk();
 
 export function getExtendedLot(
   lotId: string
@@ -522,6 +562,7 @@ export function getExtendedLot(
 
 export function saveExtendedLot(lot: ExtendedCropLotRecord): void {
   extendedCropLots.set(lot.id, lot);
+  persistExtendedLotsToDisk();
 }
 
 export function getAllExtendedLots(): ExtendedCropLotRecord[] {

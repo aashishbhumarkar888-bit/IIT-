@@ -1742,6 +1742,44 @@ async function startServer() {
     };
 
     saveExtendedLot(lot);
+
+    const userLots = userCropLotsMap.get(user.email) || [];
+    const seq = userLots.length + 1;
+    const serverLot: ServerCropLotRecord = {
+      id: lot.id,
+      shortCode: `#KS-${100 + seq}`,
+      farmerId: user.id,
+      farmerName: user.name,
+      farmerNameHi: user.nameHi,
+      cropName: lot.cropName,
+      cropNameHi: lot.cropName,
+      variety: lot.variety,
+      varietyHi: lot.variety,
+      grade: lot.grade,
+      quantityQuintals: lot.quantityQuintals,
+      harvestDate: lot.harvestDate,
+      plotAreaHectares: lot.plotAreaHectares,
+      surveyNumber: lot.surveyNumber,
+      verificationStatus: 'FARMER_DECLARED',
+      evidenceIds: [`EV-${lot.id}`],
+      evidence: {
+        id: `EV-${lot.id}`,
+        labName: 'Farmer Self-Declaration (Pending FPO / NABL Verification)',
+        certificateNumber: `DECL-${100 + seq}-2026`,
+        testedDate: 'Just now',
+        mrlStatus: 'SELF_DECLARED',
+        sha256Hash: crypto
+          .createHash('sha256')
+          .update(`${lot.id}-${user.email}`)
+          .digest('hex'),
+        moisturePercent: 11.2,
+        foreignMatterPercent: 0.9,
+      },
+      mandiPricePerQuintal: 1820,
+      directBuyerPricePerQuintal: 2150,
+    };
+    userCropLotsMap.set(user.email, [serverLot, ...userLots]);
+
     res.status(201).json(lot);
   });
 

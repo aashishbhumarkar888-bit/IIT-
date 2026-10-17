@@ -1,0 +1,1342 @@
+[
+  {
+    "id": "KS-MP-2025-089",
+    "ownerEmail": "farmer@kisanspo.in",
+    "ownerId": "USR-FARMER-01",
+    "farmerName": "Rameshwar Patidar (Demo Farmer)",
+    "cropName": "Sharbati Wheat",
+    "variety": "HI-1544 Sharbati",
+    "grade": "FAQ Grade A",
+    "quantityQuintals": 50,
+    "harvestDate": "Oct 2026",
+    "surveyNumber": "Survey #104/2, Khandwa",
+    "plotAreaHectares": 4,
+    "screeningResults": [],
+    "procurementAttempts": [],
+    "historyEvents": [
+      {
+        "eventId": "EV-SEED-KS-MP-2025-089",
+        "timestamp": "2026-10-18T00:00:00.000Z",
+        "actor": "farmer@kisanspo.in",
+        "actorRole": "farmer",
+        "eventType": "LOT_CREATED",
+        "summary": "Seeded default demo crop lot KS-MP-2025-089 (Sharbati Wheat).",
+        "isVerified": true,
+        "details": {
+          "cropName": "Sharbati Wheat",
+          "quantityQuintals": 50
+        }
+      }
+    ],
+    "readiness": [
+      {
+        "id": "bank-details",
+        "labelEn": "Bank details ready (readiness only)",
+        "labelHi": "बैंक विवरण तैयार (केवल तैयारी)",
+        "ready": false
+      },
+      {
+        "id": "registration",
+        "labelEn": "Farmer registration details ready",
+        "labelHi": "किसान पंजीकरण विवरण तैयार",
+        "ready": false
+      },
+      {
+        "id": "produce",
+        "labelEn": "Produce quantity and grade noted",
+        "labelHi": "फसल की मात्रा और ग्रेड दर्ज",
+        "ready": false
+      }
+    ],
+    "procurementState": "PLANNED",
+    "ledgerEvents": [
+      {
+        "eventId": "ev-init-KS-MP-2025-089",
+        "lotId": "KS-MP-2025-089",
+        "type": "READINESS",
+        "occurredAt": "2026-10-18T00:00:00.000Z",
+        "source": "DEMO",
+        "verification": "SEEDED_DEMO_LOT",
+        "summary": "Crop-to-cash ledger initialized for Sharbati Wheat (KS-MP-2025-089).",
+        "payload": {
+          "initialized": true
+        }
+      }
+    ],
+    "createdAt": "2026-10-18T00:00:00.000Z",
+    "updatedAt": "2026-10-18T00:00:00.000Z"
+  },
+  {
+    "id": "KS-MP-2025-094",
+    "ownerEmail": "farmer@kisanspo.in",
+    "ownerId": "USR-FARMER-01",
+    "farmerName": "Rameshwar Patidar (Demo Farmer)",
+    "cropName": "Soybean",
+    "variety": "JS-2034 High Oil",
+    "grade": "FAQ Grade A",
+    "quantityQuintals": 42,
+    "harvestDate": "Oct 2026",
+    "surveyNumber": "Survey #104/2, Khandwa",
+    "plotAreaHectares": 4,
+    "screeningResults": [],
+    "procurementAttempts": [],
+    "historyEvents": [
+      {
+        "eventId": "EV-SEED-KS-MP-2025-094",
+        "timestamp": "2026-10-18T00:00:00.000Z",
+        "actor": "farmer@kisanspo.in",
+        "actorRole": "farmer",
+        "eventType": "LOT_CREATED",
+        "summary": "Seeded default demo crop lot KS-MP-2025-094 (Soybean).",
+        "isVerified": true,
+        "details": {
+          "cropName": "Soybean",
+          "quantityQuintals": 42
+        }
+      }
+    ],
+    "readiness": [
+      {
+        "id": "bank-details",
+        "labelEn": "Bank details ready (readiness only)",
+        "labelHi": "बैंक विवरण तैयार (केवल तैयारी)",
+        "ready": false
+      },
+      {
+        "id": "registration",
+        "labelEn": "Farmer registration details ready",
+        "labelHi": "किसान पंजीकरण विवरण तैयार",
+        "ready": false
+      },
+      {
+        "id": "produce",
+        "labelEn": "Produce quantity and grade noted",
+        "labelHi": "फसल की मात्रा और ग्रेड दर्ज",
+        "ready": false
+      }
+    ],
+    "procurementState": "PLANNED",
+    "ledgerEvents": [
+      {
+        "eventId": "ev-init-KS-MP-2025-094",
+        "lotId": "KS-MP-2025-094",
+        "type": "READINESS",
+        "occurredAt": "2026-10-18T00:00:00.000Z",
+        "source": "DEMO",
+        "verification": "SEEDED_DEMO_LOT",
+        "summary": "Crop-to-cash ledger initialized for Soybean (KS-MP-2025-094).",
+        "payload": {
+          "initialized": true
+        }
+      }
+    ],
+    "createdAt": "2026-10-18T00:00:00.000Z",
+    "updatedAt": "2026-10-18T00:00:00.000Z"
+  },
+  {
+    "id": "KS-MH-2025-210",
+    "ownerEmail": "farmer@kisanspo.in",
+    "ownerId": "USR-FARMER-01",
+    "farmerName": "Rameshwar Patidar (Demo Farmer)",
+    "cropName": "Medium Staple Cotton",
+    "variety": "Bt-Hybrid H4",
+    "grade": "FAQ Grade A",
+    "quantityQuintals": 35,
+    "harvestDate": "Oct 2026",
+    "surveyNumber": "Survey #104/2, Khandwa",
+    "plotAreaHectares": 4,
+    "screeningResults": [],
+    "procurementAttempts": [],
+    "historyEvents": [
+      {
+        "eventId": "EV-SEED-KS-MH-2025-210",
+        "timestamp": "2026-10-18T00:00:00.000Z",
+        "actor": "farmer@kisanspo.in",
+        "actorRole": "farmer",
+        "eventType": "LOT_CREATED",
+        "summary": "Seeded default demo crop lot KS-MH-2025-210 (Medium Staple Cotton).",
+        "isVerified": true,
+        "details": {
+          "cropName": "Medium Staple Cotton",
+          "quantityQuintals": 35
+        }
+      }
+    ],
+    "readiness": [
+      {
+        "id": "bank-details",
+        "labelEn": "Bank details ready (readiness only)",
+        "labelHi": "बैंक विवरण तैयार (केवल तैयारी)",
+        "ready": false
+      },
+      {
+        "id": "registration",
+        "labelEn": "Farmer registration details ready",
+        "labelHi": "किसान पंजीकरण विवरण तैयार",
+        "ready": false
+      },
+      {
+        "id": "produce",
+        "labelEn": "Produce quantity and grade noted",
+        "labelHi": "फसल की मात्रा और ग्रेड दर्ज",
+        "ready": false
+      }
+    ],
+    "procurementState": "PLANNED",
+    "ledgerEvents": [
+      {
+        "eventId": "ev-init-KS-MH-2025-210",
+        "lotId": "KS-MH-2025-210",
+        "type": "READINESS",
+        "occurredAt": "2026-10-18T00:00:00.000Z",
+        "source": "DEMO",
+        "verification": "SEEDED_DEMO_LOT",
+        "summary": "Crop-to-cash ledger initialized for Medium Staple Cotton (KS-MH-2025-210).",
+        "payload": {
+          "initialized": true
+        }
+      }
+    ],
+    "createdAt": "2026-10-18T00:00:00.000Z",
+    "updatedAt": "2026-10-18T00:00:00.000Z"
+  },
+  {
+    "id": "KS-PERSIST-1792277766529",
+    "ownerEmail": "farmer.persist@example.test",
+    "ownerId": "USR-PERSIST-01",
+    "farmerName": "Durability Test Farmer",
+    "cropName": "Organic Durum Wheat",
+    "variety": "HI-8498 Malavshakti",
+    "grade": "Grade A Export",
+    "quantityQuintals": 60,
+    "harvestDate": "Oct 2026",
+    "surveyNumber": "Survey #55/A",
+    "plotAreaHectares": 4.8,
+    "screeningResults": [],
+    "procurementAttempts": [],
+    "historyEvents": [
+      {
+        "eventId": "ev-KS-PERSIST-1792277766529",
+        "timestamp": "2026-10-17T22:56:06.529Z",
+        "actor": "farmer.persist@example.test",
+        "actorRole": "farmer",
+        "eventType": "LOT_CREATED",
+        "summary": "Created lot KS-PERSIST-1792277766529",
+        "isVerified": true,
+        "details": {
+          "quantity": 60
+        }
+      }
+    ],
+    "readiness": [
+      {
+        "id": "bank-details",
+        "labelEn": "Bank details ready",
+        "labelHi": "बैंक विवरण तैयार",
+        "ready": true
+      },
+      {
+        "id": "registration",
+        "labelEn": "Farmer registration ready",
+        "labelHi": "पंजीकरण तैयार",
+        "ready": true
+      },
+      {
+        "id": "produce",
+        "labelEn": "Produce quantity noted",
+        "labelHi": "मात्रा दर्ज",
+        "ready": true
+      }
+    ],
+    "procurementState": "PLANNED",
+    "ledgerEvents": [
+      {
+        "eventId": "ev-init-KS-PERSIST-1792277766529",
+        "lotId": "KS-PERSIST-1792277766529",
+        "type": "READINESS",
+        "occurredAt": "2026-10-17T22:56:06.529Z",
+        "source": "MANUAL",
+        "verification": "USER_REPORTED",
+        "summary": "Ledger opened",
+        "payload": {
+          "initialized": true
+        }
+      }
+    ],
+    "createdAt": "2026-10-17T22:56:06.529Z",
+    "updatedAt": "2026-10-17T22:56:06.529Z"
+  },
+  {
+    "id": "KS-PERSIST-1792277783523",
+    "ownerEmail": "farmer.persist@example.test",
+    "ownerId": "USR-PERSIST-01",
+    "farmerName": "Durability Test Farmer",
+    "cropName": "Organic Durum Wheat",
+    "variety": "HI-8498 Malavshakti",
+    "grade": "Grade A Export",
+    "quantityQuintals": 60,
+    "harvestDate": "Oct 2026",
+    "surveyNumber": "Survey #55/A",
+    "plotAreaHectares": 4.8,
+    "screeningResults": [],
+    "procurementAttempts": [],
+    "historyEvents": [
+      {
+        "eventId": "ev-KS-PERSIST-1792277783523",
+        "timestamp": "2026-10-17T22:56:23.523Z",
+        "actor": "farmer.persist@example.test",
+        "actorRole": "farmer",
+        "eventType": "LOT_CREATED",
+        "summary": "Created lot KS-PERSIST-1792277783523",
+        "isVerified": true,
+        "details": {
+          "quantity": 60
+        }
+      }
+    ],
+    "readiness": [
+      {
+        "id": "bank-details",
+        "labelEn": "Bank details ready",
+        "labelHi": "बैंक विवरण तैयार",
+        "ready": true
+      },
+      {
+        "id": "registration",
+        "labelEn": "Farmer registration ready",
+        "labelHi": "पंजीकरण तैयार",
+        "ready": true
+      },
+      {
+        "id": "produce",
+        "labelEn": "Produce quantity noted",
+        "labelHi": "मात्रा दर्ज",
+        "ready": true
+      }
+    ],
+    "procurementState": "PLANNED",
+    "ledgerEvents": [
+      {
+        "eventId": "ev-init-KS-PERSIST-1792277783523",
+        "lotId": "KS-PERSIST-1792277783523",
+        "type": "READINESS",
+        "occurredAt": "2026-10-17T22:56:23.523Z",
+        "source": "MANUAL",
+        "verification": "USER_REPORTED",
+        "summary": "Ledger opened",
+        "payload": {
+          "initialized": true
+        }
+      }
+    ],
+    "createdAt": "2026-10-17T22:56:23.523Z",
+    "updatedAt": "2026-10-17T22:56:23.523Z"
+  },
+  {
+    "id": "KS-LOT-1792277798769-698",
+    "ownerEmail": "farmer.s2.fbfbba33-b40f-4700-8141-4259477210f6@example.com",
+    "ownerId": "USR-107",
+    "farmerName": "Stage 2 Farmer A",
+    "cropName": "Malvi Wheat",
+    "variety": "HI-1544 Desi",
+    "grade": "Grade A",
+    "quantityQuintals": 50,
+    "harvestDate": "Oct 2026",
+    "surveyNumber": "Survey-S2/77",
+    "plotAreaHectares": 4,
+    "screeningResults": [
+      {
+        "screeningId": "SCR-1792277798779",
+        "lotId": "KS-LOT-1792277798769-698",
+        "modelName": "KisanSetu-Screening-Adapter",
+        "modelVersion": "v1.0.0-mock-demo",
+        "isMockOrDemo": true,
+        "timestamp": "2026-10-17T22:56:38.779Z",
+        "outcomeCategory": "DISEASE_DETECTED",
+        "topClass": {
+          "className": "Soybean Rust (Phakopsora pachyrhizi)",
+          "classNameHi": "सोयाबीन रतुआ (फकोस्पोरा पचीरिजी)",
+          "confidence": 0.88,
+          "scientificName": "Phakopsora pachyrhizi"
+        },
+        "runnerUp": {
+          "className": "Cercospora Leaf Blight",
+          "classNameHi": "सर्कोस्पोरा लीफ ब्लाइट",
+          "confidence": 0.08,
+          "scientificName": "Cercospora kikuchii"
+        },
+        "calibratedConfidence": false,
+        "explanation": {
+          "visualQualityScore": 0.85,
+          "lightingAdequate": true,
+          "blurDetected": false,
+          "diagnosticNotes": "Visual inspection indicates typical reddish-brown foliar pustules. Pre-Harvest Interval (PHI) compliance mandatory before any harvest scheduling.",
+          "safeExpertReferral": "Automated systems do not prescribe synthetic pesticides from imagery alone. Please consult your Block Agriculture Extension Officer or visit the nearest Krishi Vigyan Kendra (KVK) for an official field agronomy prescription."
+        }
+      }
+    ],
+    "procurementAttempts": [
+      {
+        "attemptId": "prc-1792277798806-3",
+        "lotId": "KS-LOT-1792277798769-698",
+        "attemptTimestamp": "2026-10-17T22:56:38.806Z",
+        "reporter": "farmer.s2.fbfbba33-b40f-4700-8141-4259477210f6@example.com",
+        "reporterRole": "farmer",
+        "centreId": "FCI-CENTRE-01",
+        "centreName": "Khandwa Central Grain Mandi Centre",
+        "isCentreVerified": false,
+        "outcome": "ACCEPTED",
+        "outcomeReason": "Passed moisture check (11.4%) at FCI Khandwa centre gate",
+        "documentReadiness": {
+          "farmerIdPresented": false,
+          "landRecordReady": false,
+          "bankPassbookReady": true,
+          "allDocumentsReady": false
+        }
+      }
+    ],
+    "historyEvents": [
+      {
+        "eventId": "EV-1792277798769-1",
+        "timestamp": "2026-10-17T22:56:38.769Z",
+        "actor": "farmer.s2.fbfbba33-b40f-4700-8141-4259477210f6@example.com",
+        "actorRole": "farmer",
+        "eventType": "LOT_CREATED",
+        "summary": "Crop Lot KS-LOT-1792277798769-698 created for 50 quintals of Malvi Wheat.",
+        "isVerified": false,
+        "details": {
+          "cropName": "Malvi Wheat",
+          "quantityQuintals": 50
+        }
+      },
+      {
+        "eventId": "SCR-1792277798779",
+        "timestamp": "2026-10-17T22:56:38.779Z",
+        "actor": "farmer.s2.fbfbba33-b40f-4700-8141-4259477210f6@example.com",
+        "actorRole": "farmer",
+        "eventType": "SCREENING_PERFORMED",
+        "summary": "Crop screening performed: DISEASE_DETECTED",
+        "isVerified": false,
+        "details": {
+          "outcomeCategory": "DISEASE_DETECTED",
+          "isMockOrDemo": true
+        }
+      },
+      {
+        "eventId": "cmp-1792277798785-1",
+        "timestamp": "2026-10-17T22:56:38.785Z",
+        "actor": "farmer.s2.fbfbba33-b40f-4700-8141-4259477210f6@example.com",
+        "actorRole": "farmer",
+        "eventType": "ESTIMATE_GENERATED",
+        "summary": "Compared selling options for 50 qtl.",
+        "isVerified": true,
+        "details": {
+          "quantityQtl": 50,
+          "FCI_MSP_REFERENCE_net": 126750,
+          "MANDI_net": 111000,
+          "DIRECT_BUYER_net": 113500,
+          "downsideNet": 112500
+        }
+      },
+      {
+        "eventId": "sal-1792277798819-4",
+        "timestamp": "2026-10-17T22:56:38.819Z",
+        "actor": "farmer.s2.fbfbba33-b40f-4700-8141-4259477210f6@example.com",
+        "actorRole": "farmer",
+        "eventType": "SALE_RECORDED",
+        "summary": "Sale reported: 50 qtl at ₹2350/qtl; actual net ₹113500.",
+        "isVerified": false,
+        "details": {
+          "quantityQtl": 50,
+          "agreedPricePerQtl": 2350,
+          "deductions": 4000,
+          "actualNet": 113500,
+          "paymentStatus": "PAID",
+          "differenceFromEstimate": 0
+        }
+      }
+    ],
+    "readiness": [
+      {
+        "id": "bank-details",
+        "labelEn": "Bank details ready (readiness only)",
+        "labelHi": "बैंक विवरण तैयार (केवल तैयारी)",
+        "ready": true
+      },
+      {
+        "id": "registration",
+        "labelEn": "Farmer registration details ready",
+        "labelHi": "किसान पंजीकरण विवरण तैयार",
+        "ready": false
+      },
+      {
+        "id": "produce",
+        "labelEn": "Produce quantity and grade noted",
+        "labelHi": "फसल की मात्रा और ग्रेड दर्ज",
+        "ready": false
+      }
+    ],
+    "procurementState": "ACCEPTED",
+    "ledgerEvents": [
+      {
+        "eventId": "ev-init-1792277798769",
+        "lotId": "KS-LOT-1792277798769-698",
+        "type": "READINESS",
+        "occurredAt": "2026-10-17T22:56:38.769Z",
+        "source": "MANUAL",
+        "verification": "USER_REPORTED",
+        "summary": "Crop-to-cash ledger opened for Malvi Wheat (50 qtl).",
+        "payload": {
+          "initialized": true,
+          "quantityQtl": 50
+        }
+      },
+      {
+        "eventId": "cmp-1792277798785-1",
+        "lotId": "KS-LOT-1792277798769-698",
+        "type": "COMPARISON",
+        "occurredAt": "2026-10-17T22:56:38.785Z",
+        "source": "ESTIMATED",
+        "verification": "ESTIMATE — not an offer",
+        "summary": "Compared selling options for 50 qtl.",
+        "payload": {
+          "quantityQtl": 50,
+          "FCI_MSP_REFERENCE_net": 126750,
+          "MANDI_net": 111000,
+          "DIRECT_BUYER_net": 113500,
+          "downsideNet": 112500
+        }
+      },
+      {
+        "eventId": "rdy-1792277798800-2",
+        "lotId": "KS-LOT-1792277798769-698",
+        "type": "READINESS",
+        "occurredAt": "2026-10-17T22:56:38.800Z",
+        "source": "MANUAL",
+        "verification": "USER_REPORTED",
+        "summary": "bank-details readiness marked yes.",
+        "payload": {
+          "readinessId": "bank-details",
+          "ready": true
+        }
+      },
+      {
+        "eventId": "prc-1792277798806-3",
+        "lotId": "KS-LOT-1792277798769-698",
+        "type": "PROCUREMENT",
+        "occurredAt": "2026-10-17T22:56:38.806Z",
+        "source": "MANUAL",
+        "verification": "FARMER_REPORTED",
+        "summary": "Procurement attempt marked ACCEPTED. Reason: Passed moisture check (11.4%) at FCI Khandwa centre gate",
+        "payload": {
+          "state": "ACCEPTED",
+          "reason": "Passed moisture check (11.4%) at FCI Khandwa centre gate"
+        }
+      },
+      {
+        "eventId": "sal-1792277798819-4",
+        "lotId": "KS-LOT-1792277798769-698",
+        "type": "SALE",
+        "occurredAt": "2026-10-17T22:56:38.819Z",
+        "source": "MANUAL",
+        "verification": "FARMER_REPORTED",
+        "summary": "Sale reported: 50 qtl at ₹2350/qtl; actual net ₹113500.",
+        "payload": {
+          "quantityQtl": 50,
+          "agreedPricePerQtl": 2350,
+          "deductions": 4000,
+          "actualNet": 113500,
+          "paymentStatus": "PAID",
+          "differenceFromEstimate": 0
+        }
+      }
+    ],
+    "createdAt": "2026-10-17T22:56:38.769Z",
+    "updatedAt": "2026-10-17T22:56:38.819Z",
+    "latestEstimate": {
+      "estimateId": "EST-1792277798785",
+      "calculationVersion": "v2.0-deterministic",
+      "calculatedAt": "2026-10-17T22:56:38.785Z",
+      "lotId": "KS-LOT-1792277798769-698",
+      "acceptedQuantityQuintals": 50,
+      "options": {
+        "fciMsp": {
+          "optionKey": "FCI_MSP",
+          "optionTitle": "FCI / MSP Reference Procurement",
+          "unitPrice": 2585,
+          "grossAmount": 129250,
+          "deductions": {
+            "transportCost": 2500,
+            "loadingHandlingCost": 0,
+            "mandiCessFee": 0,
+            "platformFee": 0,
+            "extraVisitCosts": 0,
+            "expectedDeductions": 0,
+            "totalDeductions": 2500
+          },
+          "netReturn": 126750,
+          "netRealizationPerQuintal": 2535,
+          "scenarioNotes": "Official MSP procurement centre. Strict FAQ/moisture specifications apply."
+        },
+        "mandi": {
+          "optionKey": "MANDI",
+          "optionTitle": "Local APMC Mandi Auction",
+          "unitPrice": 2300,
+          "grossAmount": 115000,
+          "deductions": {
+            "transportCost": 2000,
+            "loadingHandlingCost": 1000,
+            "mandiCessFee": 1000,
+            "platformFee": 0,
+            "extraVisitCosts": 0,
+            "expectedDeductions": 0,
+            "totalDeductions": 4000
+          },
+          "netReturn": 111000,
+          "netRealizationPerQuintal": 2220,
+          "scenarioNotes": "Immediate same-day sale with standard APMC mandi fee, handling, and logistics deductions."
+        },
+        "directBuyer": {
+          "optionKey": "DIRECT_BUYER",
+          "optionTitle": "Direct Institutional Buyer / FPO Aggregation",
+          "unitPrice": 2350,
+          "grossAmount": 117500,
+          "deductions": {
+            "transportCost": 2500,
+            "loadingHandlingCost": 1000,
+            "mandiCessFee": 0,
+            "platformFee": 500,
+            "extraVisitCosts": 0,
+            "expectedDeductions": 0,
+            "totalDeductions": 4000
+          },
+          "netReturn": 113500,
+          "netRealizationPerQuintal": 2270,
+          "scenarioNotes": "Escrow-backed forward contract with farmgate/hub delivery confirmation."
+        },
+        "downsideFallback": {
+          "optionKey": "DOWNSIDE_FALLBACK",
+          "optionTitle": "FCI Rejection Fallback to Direct Buyer",
+          "unitPrice": 2350,
+          "grossAmount": 117500,
+          "deductions": {
+            "transportCost": 2500,
+            "loadingHandlingCost": 1000,
+            "mandiCessFee": 0,
+            "platformFee": 500,
+            "extraVisitCosts": 1000,
+            "expectedDeductions": 0,
+            "totalDeductions": 5000
+          },
+          "netReturn": 112500,
+          "netRealizationPerQuintal": 2250,
+          "scenarioNotes": "Procurement at FCI rejected due to moisture or queue timeout; cargo diverted to local buyer with 1 extra transport leg."
+        }
+      },
+      "bestOptionKey": "FCI_MSP",
+      "reproducibleFormula": "Net return = (accepted quantity × price) − transport − loading/handling − fees − extra-visit costs − expected deductions"
+    },
+    "saleRecord": {
+      "saleId": "sal-1792277798819-4",
+      "lotId": "KS-LOT-1792277798769-698",
+      "buyerName": "Direct Institutional Buyer",
+      "buyerType": "INSTITUTIONAL_BUYER",
+      "acceptedQuantityQuintals": 50,
+      "actualPricePerQuintal": 2350,
+      "actualGrossAmount": 117500,
+      "actualDeductions": {
+        "transport": 4000,
+        "loading": 0,
+        "handling": 0,
+        "fees": 0,
+        "discrepancyDeduction": 0,
+        "totalDeductions": 4000
+      },
+      "actualNetAmount": 113500,
+      "paymentStatus": "FULLY_SETTLED",
+      "settledAt": "2026-10-17T22:56:38.819Z",
+      "estimatedVsActualGap": {
+        "estimatedNet": 113500,
+        "actualNet": 113500,
+        "variance": 0
+      }
+    }
+  },
+  {
+    "id": "KS-LOT-1792277806676-201",
+    "ownerEmail": "farmer.v1.a.3cf3e9c9-18e9-46f6-9845-ec0141f9f88d@example.com",
+    "ownerId": "USR-109",
+    "farmerName": "Kisan V1 Farmer A",
+    "cropName": "Sharbati Wheat",
+    "variety": "HI-1544 FAQ",
+    "grade": "Grade A",
+    "quantityQuintals": 50,
+    "harvestDate": "Oct 2026",
+    "surveyNumber": "Survey-89/B",
+    "plotAreaHectares": 4,
+    "screeningResults": [
+      {
+        "screeningId": "SCR-1792277806899",
+        "lotId": "KS-LOT-1792277806676-201",
+        "modelName": "KisanSetu-Screening-Adapter",
+        "modelVersion": "v1.0.0-mock-demo",
+        "isMockOrDemo": true,
+        "timestamp": "2026-10-17T22:56:46.899Z",
+        "outcomeCategory": "DISEASE_DETECTED",
+        "topClass": {
+          "className": "Soybean Rust (Phakopsora pachyrhizi)",
+          "classNameHi": "सोयाबीन रतुआ (फकोस्पोरा पचीरिजी)",
+          "confidence": 0.88,
+          "scientificName": "Phakopsora pachyrhizi"
+        },
+        "runnerUp": {
+          "className": "Cercospora Leaf Blight",
+          "classNameHi": "सर्कोस्पोरा लीफ ब्लाइट",
+          "confidence": 0.08,
+          "scientificName": "Cercospora kikuchii"
+        },
+        "calibratedConfidence": false,
+        "explanation": {
+          "visualQualityScore": 0.85,
+          "lightingAdequate": true,
+          "blurDetected": false,
+          "diagnosticNotes": "Visual inspection indicates typical reddish-brown foliar pustules. Pre-Harvest Interval (PHI) compliance mandatory before any harvest scheduling.",
+          "safeExpertReferral": "Automated systems do not prescribe synthetic pesticides from imagery alone. Please consult your Block Agriculture Extension Officer or visit the nearest Krishi Vigyan Kendra (KVK) for an official field agronomy prescription."
+        }
+      }
+    ],
+    "procurementAttempts": [
+      {
+        "attemptId": "prc-1792277806779-3",
+        "lotId": "KS-LOT-1792277806676-201",
+        "attemptTimestamp": "2026-10-17T22:56:46.779Z",
+        "reporter": "farmer.v1.a.3cf3e9c9-18e9-46f6-9845-ec0141f9f88d@example.com",
+        "reporterRole": "farmer",
+        "centreId": "FCI-CENTRE-01",
+        "centreName": "Khandwa Central Grain Mandi Centre",
+        "isCentreVerified": false,
+        "outcome": "ACCEPTED",
+        "outcomeReason": "Moisture verified at 11.4%",
+        "documentReadiness": {
+          "farmerIdPresented": true,
+          "landRecordReady": false,
+          "bankPassbookReady": false,
+          "allDocumentsReady": false
+        }
+      }
+    ],
+    "historyEvents": [
+      {
+        "eventId": "EV-1792277806676-1",
+        "timestamp": "2026-10-17T22:56:46.676Z",
+        "actor": "farmer.v1.a.3cf3e9c9-18e9-46f6-9845-ec0141f9f88d@example.com",
+        "actorRole": "farmer",
+        "eventType": "LOT_CREATED",
+        "summary": "Crop Lot KS-LOT-1792277806676-201 created for 50 quintals of Sharbati Wheat.",
+        "isVerified": false,
+        "details": {
+          "cropName": "Sharbati Wheat",
+          "quantityQuintals": 50
+        }
+      },
+      {
+        "eventId": "cmp-1792277806760-1",
+        "timestamp": "2026-10-17T22:56:46.760Z",
+        "actor": "farmer.v1.a.3cf3e9c9-18e9-46f6-9845-ec0141f9f88d@example.com",
+        "actorRole": "farmer",
+        "eventType": "ESTIMATE_GENERATED",
+        "summary": "Compared selling options for 50 qtl.",
+        "isVerified": true,
+        "details": {
+          "quantityQtl": 50,
+          "FCI_MSP_REFERENCE_net": 126750,
+          "MANDI_net": 111000,
+          "DIRECT_BUYER_net": 113500,
+          "downsideNet": 112500
+        }
+      },
+      {
+        "eventId": "sal-1792277806823-4",
+        "timestamp": "2026-10-17T22:56:46.823Z",
+        "actor": "farmer.v1.a.3cf3e9c9-18e9-46f6-9845-ec0141f9f88d@example.com",
+        "actorRole": "farmer",
+        "eventType": "SALE_RECORDED",
+        "summary": "Sale reported: 50 qtl at ₹2,350/qtl; actual net ₹1,13,500.",
+        "isVerified": false,
+        "details": {
+          "quantityQtl": 50,
+          "agreedPricePerQtl": 2350,
+          "deductions": 4000,
+          "actualNet": 113500,
+          "paymentStatus": "PAID",
+          "differenceFromEstimate": 0
+        }
+      },
+      {
+        "eventId": "SCR-1792277806899",
+        "timestamp": "2026-10-17T22:56:46.899Z",
+        "actor": "farmer.v1.a.3cf3e9c9-18e9-46f6-9845-ec0141f9f88d@example.com",
+        "actorRole": "farmer",
+        "eventType": "SCREENING_PERFORMED",
+        "summary": "Crop screening performed: DISEASE_DETECTED",
+        "isVerified": false,
+        "details": {
+          "outcomeCategory": "DISEASE_DETECTED",
+          "isMockOrDemo": true
+        }
+      }
+    ],
+    "readiness": [
+      {
+        "id": "bank-details",
+        "labelEn": "Bank details ready (readiness only)",
+        "labelHi": "बैंक विवरण तैयार (केवल तैयारी)",
+        "ready": false
+      },
+      {
+        "id": "registration",
+        "labelEn": "Farmer registration details ready",
+        "labelHi": "किसान पंजीकरण विवरण तैयार",
+        "ready": true
+      },
+      {
+        "id": "produce",
+        "labelEn": "Produce quantity and grade noted",
+        "labelHi": "फसल की मात्रा और ग्रेड दर्ज",
+        "ready": false
+      }
+    ],
+    "procurementState": "ACCEPTED",
+    "ledgerEvents": [
+      {
+        "eventId": "ev-init-1792277806676",
+        "lotId": "KS-LOT-1792277806676-201",
+        "type": "READINESS",
+        "occurredAt": "2026-10-17T22:56:46.676Z",
+        "source": "MANUAL",
+        "verification": "USER_REPORTED",
+        "summary": "Crop-to-cash ledger opened for Sharbati Wheat (50 qtl).",
+        "payload": {
+          "initialized": true,
+          "quantityQtl": 50
+        }
+      },
+      {
+        "eventId": "cmp-1792277806760-1",
+        "lotId": "KS-LOT-1792277806676-201",
+        "type": "COMPARISON",
+        "occurredAt": "2026-10-17T22:56:46.760Z",
+        "source": "ESTIMATED",
+        "verification": "ESTIMATE — not an offer",
+        "summary": "Compared selling options for 50 qtl.",
+        "payload": {
+          "quantityQtl": 50,
+          "FCI_MSP_REFERENCE_net": 126750,
+          "MANDI_net": 111000,
+          "DIRECT_BUYER_net": 113500,
+          "downsideNet": 112500
+        }
+      },
+      {
+        "eventId": "rdy-1792277806769-2",
+        "lotId": "KS-LOT-1792277806676-201",
+        "type": "READINESS",
+        "occurredAt": "2026-10-17T22:56:46.769Z",
+        "source": "MANUAL",
+        "verification": "USER_REPORTED",
+        "summary": "registration readiness marked yes.",
+        "payload": {
+          "readinessId": "registration",
+          "ready": true
+        }
+      },
+      {
+        "eventId": "prc-1792277806779-3",
+        "lotId": "KS-LOT-1792277806676-201",
+        "type": "PROCUREMENT",
+        "occurredAt": "2026-10-17T22:56:46.779Z",
+        "source": "MANUAL",
+        "verification": "FARMER_REPORTED",
+        "summary": "Procurement attempt marked ACCEPTED.",
+        "payload": {
+          "state": "ACCEPTED",
+          "reason": "Moisture verified at 11.4%"
+        }
+      },
+      {
+        "eventId": "sal-1792277806823-4",
+        "lotId": "KS-LOT-1792277806676-201",
+        "type": "SALE",
+        "occurredAt": "2026-10-17T22:56:46.823Z",
+        "source": "MANUAL",
+        "verification": "FARMER_REPORTED",
+        "summary": "Sale reported: 50 qtl at ₹2,350/qtl; actual net ₹1,13,500.",
+        "payload": {
+          "quantityQtl": 50,
+          "agreedPricePerQtl": 2350,
+          "deductions": 4000,
+          "actualNet": 113500,
+          "paymentStatus": "PAID",
+          "differenceFromEstimate": 0
+        }
+      }
+    ],
+    "createdAt": "2026-10-17T22:56:46.676Z",
+    "updatedAt": "2026-10-17T22:56:46.899Z",
+    "latestEstimate": {
+      "estimateId": "EST-1792277806760",
+      "calculationVersion": "v2.0-deterministic",
+      "calculatedAt": "2026-10-17T22:56:46.760Z",
+      "lotId": "KS-LOT-1792277806676-201",
+      "acceptedQuantityQuintals": 50,
+      "options": {
+        "fciMsp": {
+          "optionKey": "FCI_MSP",
+          "optionTitle": "FCI / MSP Reference Procurement",
+          "unitPrice": 2585,
+          "grossAmount": 129250,
+          "deductions": {
+            "transportCost": 2500,
+            "loadingHandlingCost": 0,
+            "mandiCessFee": 0,
+            "platformFee": 0,
+            "extraVisitCosts": 0,
+            "expectedDeductions": 0,
+            "totalDeductions": 2500
+          },
+          "netReturn": 126750,
+          "netRealizationPerQuintal": 2535,
+          "scenarioNotes": "Official MSP procurement centre. Strict FAQ/moisture specifications apply."
+        },
+        "mandi": {
+          "optionKey": "MANDI",
+          "optionTitle": "Local APMC Mandi Auction",
+          "unitPrice": 2300,
+          "grossAmount": 115000,
+          "deductions": {
+            "transportCost": 2000,
+            "loadingHandlingCost": 1000,
+            "mandiCessFee": 1000,
+            "platformFee": 0,
+            "extraVisitCosts": 0,
+            "expectedDeductions": 0,
+            "totalDeductions": 4000
+          },
+          "netReturn": 111000,
+          "netRealizationPerQuintal": 2220,
+          "scenarioNotes": "Immediate same-day sale with standard APMC mandi fee, handling, and logistics deductions."
+        },
+        "directBuyer": {
+          "optionKey": "DIRECT_BUYER",
+          "optionTitle": "Direct Institutional Buyer / FPO Aggregation",
+          "unitPrice": 2350,
+          "grossAmount": 117500,
+          "deductions": {
+            "transportCost": 2500,
+            "loadingHandlingCost": 1000,
+            "mandiCessFee": 0,
+            "platformFee": 500,
+            "extraVisitCosts": 0,
+            "expectedDeductions": 0,
+            "totalDeductions": 4000
+          },
+          "netReturn": 113500,
+          "netRealizationPerQuintal": 2270,
+          "scenarioNotes": "Escrow-backed forward contract with farmgate/hub delivery confirmation."
+        },
+        "downsideFallback": {
+          "optionKey": "DOWNSIDE_FALLBACK",
+          "optionTitle": "FCI Rejection Fallback to Direct Buyer",
+          "unitPrice": 2350,
+          "grossAmount": 117500,
+          "deductions": {
+            "transportCost": 2500,
+            "loadingHandlingCost": 1000,
+            "mandiCessFee": 0,
+            "platformFee": 500,
+            "extraVisitCosts": 1000,
+            "expectedDeductions": 0,
+            "totalDeductions": 5000
+          },
+          "netReturn": 112500,
+          "netRealizationPerQuintal": 2250,
+          "scenarioNotes": "Procurement at FCI rejected due to moisture or queue timeout; cargo diverted to local buyer with 1 extra transport leg."
+        }
+      },
+      "bestOptionKey": "FCI_MSP",
+      "reproducibleFormula": "Net return = (accepted quantity × price) − transport − loading/handling − fees − extra-visit costs − expected deductions"
+    },
+    "saleRecord": {
+      "saleId": "sal-1792277806823-4",
+      "lotId": "KS-LOT-1792277806676-201",
+      "buyerName": "Direct Institutional Buyer",
+      "buyerType": "INSTITUTIONAL_BUYER",
+      "acceptedQuantityQuintals": 50,
+      "actualPricePerQuintal": 2350,
+      "actualGrossAmount": 117500,
+      "actualDeductions": {
+        "transport": 4000,
+        "loading": 0,
+        "handling": 0,
+        "fees": 0,
+        "discrepancyDeduction": 0,
+        "totalDeductions": 4000
+      },
+      "actualNetAmount": 113500,
+      "paymentStatus": "FULLY_SETTLED",
+      "settledAt": "2026-10-17T22:56:46.823Z",
+      "estimatedVsActualGap": {
+        "estimatedNet": 113500,
+        "actualNet": 113500,
+        "variance": 0
+      }
+    }
+  },
+  {
+    "id": "KS-LOT-1792277806689",
+    "ownerEmail": "farmer.c2c.1792277806495@example.com",
+    "ownerId": "USR-110",
+    "farmerName": "Ramesh Demo Farmer",
+    "cropName": "Soybean (JS-335)",
+    "variety": "Grade A Certified",
+    "grade": "Grade A",
+    "quantityQuintals": 50,
+    "harvestDate": "Oct 2026",
+    "surveyNumber": "Plot-99/A",
+    "plotAreaHectares": 4,
+    "screeningResults": [
+      {
+        "screeningId": "SCR-1792277806756",
+        "lotId": "KS-LOT-1792277806689",
+        "modelName": "KisanSetu-Screening-Adapter",
+        "modelVersion": "v1.0.0-mock-demo",
+        "isMockOrDemo": true,
+        "timestamp": "2026-10-17T22:56:46.756Z",
+        "outcomeCategory": "DISEASE_DETECTED",
+        "topClass": {
+          "className": "Soybean Rust (Phakopsora pachyrhizi)",
+          "classNameHi": "सोयाबीन रतुआ (फकोस्पोरा पचीरिजी)",
+          "confidence": 0.88,
+          "scientificName": "Phakopsora pachyrhizi"
+        },
+        "runnerUp": {
+          "className": "Cercospora Leaf Blight",
+          "classNameHi": "सर्कोस्पोरा लीफ ब्लाइट",
+          "confidence": 0.08,
+          "scientificName": "Cercospora kikuchii"
+        },
+        "calibratedConfidence": false,
+        "explanation": {
+          "visualQualityScore": 0.85,
+          "lightingAdequate": true,
+          "blurDetected": false,
+          "diagnosticNotes": "Visual inspection indicates typical reddish-brown foliar pustules. Pre-Harvest Interval (PHI) compliance mandatory before any harvest scheduling.",
+          "safeExpertReferral": "Automated systems do not prescribe synthetic pesticides from imagery alone. Please consult your Block Agriculture Extension Officer or visit the nearest Krishi Vigyan Kendra (KVK) for an official field agronomy prescription."
+        }
+      }
+    ],
+    "procurementAttempts": [
+      {
+        "attemptId": "ATT-1792277806776",
+        "lotId": "KS-LOT-1792277806689",
+        "attemptTimestamp": "2026-10-17T22:56:46.776Z",
+        "reporter": "farmer.c2c.1792277806495@example.com",
+        "reporterRole": "farmer",
+        "centreId": "FCI-KHD-01",
+        "centreName": "Khandwa FCI Depot Centre",
+        "isCentreVerified": true,
+        "outcome": "ACCEPTED",
+        "outcomeReason": "Moisture below 12%, FAQ specification verified.",
+        "documentReadiness": {
+          "farmerIdPresented": true,
+          "landRecordReady": true,
+          "bankPassbookReady": true,
+          "allDocumentsReady": true
+        }
+      }
+    ],
+    "historyEvents": [
+      {
+        "eventId": "EV-1792277806690-1",
+        "timestamp": "2026-10-17T22:56:46.690Z",
+        "actor": "farmer.c2c.1792277806495@example.com",
+        "actorRole": "farmer",
+        "eventType": "LOT_CREATED",
+        "summary": "Crop Lot KS-LOT-1792277806689 created for 50 quintals of Soybean (JS-335).",
+        "isVerified": false,
+        "details": {
+          "cropName": "Soybean (JS-335)",
+          "quantityQuintals": 50
+        }
+      },
+      {
+        "eventId": "EV-1792277806756-SCR",
+        "timestamp": "2026-10-17T22:56:46.756Z",
+        "actor": "farmer.c2c.1792277806495@example.com",
+        "actorRole": "farmer",
+        "eventType": "SCREENING_PERFORMED",
+        "summary": "Crop screening performed: DISEASE_DETECTED (Soybean Rust (Phakopsora pachyrhizi))",
+        "isVerified": false,
+        "details": {
+          "outcome": "DISEASE_DETECTED",
+          "isMock": true
+        }
+      },
+      {
+        "eventId": "EV-1792277806765-EST",
+        "timestamp": "2026-10-17T22:56:46.765Z",
+        "actor": "farmer.c2c.1792277806495@example.com",
+        "actorRole": "farmer",
+        "eventType": "ESTIMATE_GENERATED",
+        "summary": "Financial estimate generated (v2.0-deterministic): FCI ₹126750, Mandi ₹111000, Direct ₹113500",
+        "isVerified": true,
+        "details": {
+          "fciNet": 126750,
+          "mandiNet": 111000,
+          "directNet": 113500,
+          "downsideNet": 112500
+        }
+      },
+      {
+        "eventId": "EV-1792277806777-ATT",
+        "timestamp": "2026-10-17T22:56:46.776Z",
+        "actor": "farmer.c2c.1792277806495@example.com",
+        "actorRole": "farmer",
+        "eventType": "PROCUREMENT_ATTEMPT",
+        "summary": "Procurement visit at Khandwa FCI Depot Centre: outcome ACCEPTED.",
+        "isVerified": true,
+        "details": {
+          "outcome": "ACCEPTED",
+          "reason": "Moisture below 12%, FAQ specification verified.",
+          "allDocs": true
+        }
+      },
+      {
+        "eventId": "EV-1792277806819-SALE",
+        "timestamp": "2026-10-17T22:56:46.819Z",
+        "actor": "farmer.c2c.1792277806495@example.com",
+        "actorRole": "farmer",
+        "eventType": "SALE_RECORDED",
+        "summary": "Sale finalized with ITC Choupal Sagar: Gross ₹117500, Net ₹113500, Status: FIRST_INSTALLMENT_PAID",
+        "isVerified": true,
+        "details": {
+          "actualNetAmount": 113500,
+          "paymentStatus": "FIRST_INSTALLMENT_PAID",
+          "gapVariance": 0
+        }
+      }
+    ],
+    "readiness": [
+      {
+        "id": "bank-details",
+        "labelEn": "Bank details ready (readiness only)",
+        "labelHi": "बैंक विवरण तैयार (केवल तैयारी)",
+        "ready": false
+      },
+      {
+        "id": "registration",
+        "labelEn": "Farmer registration details ready",
+        "labelHi": "किसान पंजीकरण विवरण तैयार",
+        "ready": false
+      },
+      {
+        "id": "produce",
+        "labelEn": "Produce quantity and grade noted",
+        "labelHi": "फसल की मात्रा और ग्रेड दर्ज",
+        "ready": false
+      }
+    ],
+    "procurementState": "PLANNED",
+    "ledgerEvents": [
+      {
+        "eventId": "ev-init-KS-LOT-1792277806689",
+        "lotId": "KS-LOT-1792277806689",
+        "type": "READINESS",
+        "occurredAt": "2026-10-17T22:56:46.690Z",
+        "source": "MANUAL",
+        "verification": "USER_REPORTED",
+        "summary": "Crop-to-cash ledger opened for Soybean (JS-335) (KS-LOT-1792277806689).",
+        "payload": {
+          "initialized": true
+        }
+      }
+    ],
+    "createdAt": "2026-10-17T22:56:46.690Z",
+    "updatedAt": "2026-10-17T22:56:46.819Z",
+    "latestEstimate": {
+      "estimateId": "EST-1792277806765",
+      "calculationVersion": "v2.0-deterministic",
+      "calculatedAt": "2026-10-17T22:56:46.765Z",
+      "lotId": "KS-LOT-1792277806689",
+      "acceptedQuantityQuintals": 50,
+      "options": {
+        "fciMsp": {
+          "optionKey": "FCI_MSP",
+          "optionTitle": "FCI / MSP Reference Procurement",
+          "unitPrice": 2585,
+          "grossAmount": 129250,
+          "deductions": {
+            "transportCost": 2500,
+            "loadingHandlingCost": 0,
+            "mandiCessFee": 0,
+            "platformFee": 0,
+            "extraVisitCosts": 0,
+            "expectedDeductions": 0,
+            "totalDeductions": 2500
+          },
+          "netReturn": 126750,
+          "netRealizationPerQuintal": 2535,
+          "scenarioNotes": "Official MSP procurement centre. Strict FAQ/moisture specifications apply."
+        },
+        "mandi": {
+          "optionKey": "MANDI",
+          "optionTitle": "Local APMC Mandi Auction",
+          "unitPrice": 2300,
+          "grossAmount": 115000,
+          "deductions": {
+            "transportCost": 2000,
+            "loadingHandlingCost": 1000,
+            "mandiCessFee": 1000,
+            "platformFee": 0,
+            "extraVisitCosts": 0,
+            "expectedDeductions": 0,
+            "totalDeductions": 4000
+          },
+          "netReturn": 111000,
+          "netRealizationPerQuintal": 2220,
+          "scenarioNotes": "Immediate same-day sale with standard APMC mandi fee, handling, and logistics deductions."
+        },
+        "directBuyer": {
+          "optionKey": "DIRECT_BUYER",
+          "optionTitle": "Direct Institutional Buyer / FPO Aggregation",
+          "unitPrice": 2350,
+          "grossAmount": 117500,
+          "deductions": {
+            "transportCost": 2500,
+            "loadingHandlingCost": 1000,
+            "mandiCessFee": 0,
+            "platformFee": 500,
+            "extraVisitCosts": 0,
+            "expectedDeductions": 0,
+            "totalDeductions": 4000
+          },
+          "netReturn": 113500,
+          "netRealizationPerQuintal": 2270,
+          "scenarioNotes": "Escrow-backed forward contract with farmgate/hub delivery confirmation."
+        },
+        "downsideFallback": {
+          "optionKey": "DOWNSIDE_FALLBACK",
+          "optionTitle": "FCI Rejection Fallback to Direct Buyer",
+          "unitPrice": 2350,
+          "grossAmount": 117500,
+          "deductions": {
+            "transportCost": 2500,
+            "loadingHandlingCost": 1000,
+            "mandiCessFee": 0,
+            "platformFee": 500,
+            "extraVisitCosts": 1000,
+            "expectedDeductions": 0,
+            "totalDeductions": 5000
+          },
+          "netReturn": 112500,
+          "netRealizationPerQuintal": 2250,
+          "scenarioNotes": "Procurement at FCI rejected due to moisture or queue timeout; cargo diverted to local buyer with 1 extra transport leg."
+        }
+      },
+      "bestOptionKey": "FCI_MSP",
+      "reproducibleFormula": "Net return = (accepted quantity × price) − transport − loading/handling − fees − extra-visit costs − expected deductions"
+    },
+    "saleRecord": {
+      "saleId": "SALE-1792277806819",
+      "lotId": "KS-LOT-1792277806689",
+      "buyerName": "ITC Choupal Sagar",
+      "buyerType": "INSTITUTIONAL_BUYER",
+      "acceptedQuantityQuintals": 50,
+      "actualPricePerQuintal": 2350,
+      "actualGrossAmount": 117500,
+      "actualDeductions": {
+        "transport": 2500,
+        "loading": 1000,
+        "handling": 0,
+        "fees": 500,
+        "discrepancyDeduction": 0,
+        "totalDeductions": 4000
+      },
+      "actualNetAmount": 113500,
+      "paymentStatus": "FIRST_INSTALLMENT_PAID",
+      "settledAt": "2026-10-17T22:56:46.819Z",
+      "estimatedVsActualGap": {
+        "estimatedNet": 113500,
+        "actualNet": 113500,
+        "variance": 0
+      }
+    }
+  },
+  {
+    "id": "KS-USER-USR111-101",
+    "ownerEmail": "scale-test-b4c531ed-e81f-4790-95da-d634061ca0f1@example.test",
+    "ownerId": "USR-111",
+    "farmerName": "Scaling Test Farmer",
+    "cropName": "Test Wheat",
+    "variety": "Test Variety",
+    "grade": "Grade A (Farmer Declared)",
+    "quantityQuintals": 12,
+    "harvestDate": "Oct 2026",
+    "surveyNumber": "Test Village",
+    "plotAreaHectares": 0.96,
+    "screeningResults": [],
+    "procurementAttempts": [],
+    "historyEvents": [
+      {
+        "eventId": "EV-1792277806772-1",
+        "timestamp": "2026-10-17T22:56:46.772Z",
+        "actor": "scale-test-b4c531ed-e81f-4790-95da-d634061ca0f1@example.test",
+        "actorRole": "farmer",
+        "eventType": "LOT_CREATED",
+        "summary": "Crop Lot KS-USER-USR111-101 created for 12 quintals of Test Wheat.",
+        "isVerified": false,
+        "details": {
+          "cropName": "Test Wheat",
+          "quantityQuintals": 12
+        }
+      }
+    ],
+    "readiness": [
+      {
+        "id": "bank-details",
+        "labelEn": "Bank details ready (readiness only)",
+        "labelHi": "बैंक विवरण तैयार (केवल तैयारी)",
+        "ready": false
+      },
+      {
+        "id": "registration",
+        "labelEn": "Farmer registration details ready",
+        "labelHi": "किसान पंजीकरण विवरण तैयार",
+        "ready": false
+      },
+      {
+        "id": "produce",
+        "labelEn": "Produce quantity and grade noted",
+        "labelHi": "फसल की मात्रा और ग्रेड दर्ज",
+        "ready": false
+      }
+    ],
+    "procurementState": "PLANNED",
+    "ledgerEvents": [
+      {
+        "eventId": "ev-init-KS-USER-USR111-101",
+        "lotId": "KS-USER-USR111-101",
+        "type": "READINESS",
+        "occurredAt": "2026-10-17T22:56:46.772Z",
+        "source": "MANUAL",
+        "verification": "USER_REPORTED",
+        "summary": "Crop-to-cash ledger opened for Test Wheat (KS-USER-USR111-101).",
+        "payload": {
+          "initialized": true
+        }
+      }
+    ],
+    "createdAt": "2026-10-17T22:56:46.772Z",
+    "updatedAt": "2026-10-17T22:56:46.772Z"
+  }
+]

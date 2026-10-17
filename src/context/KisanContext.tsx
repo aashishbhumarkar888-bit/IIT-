@@ -274,7 +274,29 @@ export const KisanProvider: React.FC<{ children: React.ReactNode }> = ({
   });
 
   const [personalLots, setPersonalLots] = useState<CropLot[]>([]);
-  const [selectedLotId, setSelectedLotId] = useState<string>('KS-MP-2025-089');
+  const [selectedLotId, setSelectedLotIdState] = useState<string>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('kisan_selected_lot_id');
+        if (stored) return stored;
+      }
+    } catch {
+      // Ignore storage errors
+    }
+    return 'KS-MP-2025-089';
+  });
+
+  const setSelectedLotId = useCallback((lotId: string) => {
+    setSelectedLotIdState(lotId);
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('kisan_selected_lot_id', lotId);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
   const [statusOverrides, setStatusOverrides] = useState<
     Record<string, VerificationStatus>
   >({});
