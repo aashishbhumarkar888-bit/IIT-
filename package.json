@@ -10,11 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-<<<<<<< HEAD
-    "test": "node --import tsx --test tests/server-auth.test.js tests/server-session.test.js tests/session-token-ui.test.js tests/crop-to-cash-calculations.test.js tests/crop-to-cash-adapter.test.js"
-=======
-    "test": "node --import tsx --test tests/server-auth.test.js tests/server-session.test.js tests/session-token-ui.test.js tests/crop-to-cash.test.js tests/c2c-integration.test.js"
->>>>>>> 66bcde4bbfe113ab0a5b4f9ed9ab6eec0c704ad6
+    "test": "node --import tsx --test tests/server-auth.test.js tests/server-session.test.js tests/session-token-ui.test.js tests/crop-to-cash.test.js tests/crop-to-cash-calculations.test.js tests/crop-to-cash-adapter.test.js",
+    "test:integration": "node --import tsx --test tests/c2c-integration.test.js"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
