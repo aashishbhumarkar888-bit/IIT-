@@ -11,7 +11,6 @@ import {
   collection,
   doc,
   getDoc,
-  getDocFromServer,
   getFirestore,
   onSnapshot,
   query,
@@ -37,21 +36,6 @@ export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export { onAuthStateChanged };
-
-// Validate connection to Firestore on boot
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.includes('the client is offline')
-    ) {
-      console.error('Please check your Firebase configuration.');
-    }
-  }
-}
-testConnection();
 
 export enum OperationType {
   CREATE = 'create',

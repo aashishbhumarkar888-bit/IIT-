@@ -487,6 +487,10 @@ function recordAudit(
 async function startServer() {
   const app = express();
   app.use(express.json());
+  app.use('/api', (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    next();
+  });
 
   // 1. Check current session
   app.get('/api/auth/session', (req: Request, res: Response) => {
@@ -1335,8 +1339,29 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
+    const assetsPath = path.join(distPath, 'assets');
+    app.use(
+      express.static(distPath, {
+        setHeaders: (res, filePath) => {
+          const relativeToAssets = path.relative(assetsPath, filePath);
+          const isHashedAsset =
+            !relativeToAssets.startsWith('..') &&
+            !path.isAbsolute(relativeToAssets) &&
+            /-[A-Za-z0-9_-]{8,}\.[^.]+$/.test(path.basename(filePath));
+
+          if (path.basename(filePath) === 'index.html') {
+            res.setHeader('Cache-Control', 'no-cache');
+          } else if (isHashedAsset) {
+            res.setHeader(
+              'Cache-Control',
+              'public, max-age=31536000, immutable'
+            );
+          }
+        },
+      })
+    );
     app.get('*', (_req: Request, res: Response) => {
+      res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
