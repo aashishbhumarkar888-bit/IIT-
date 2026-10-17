@@ -17,7 +17,8 @@
 ## Baseline checks
 
 - Baseline before implementation: `npm test` 7 passed, 0 failed, 1 skipped; lint/build passed with the existing Vite large-chunk warning.
-- Current: `npm test` 17 passed, 0 failed, 1 skipped; `npm run test:integration` 1 passed against an isolated local server; `npm run build` passed with existing Vite config/large-chunk warnings; `git diff --check` passed. `npm run lint` fails on two unresolved backend-owned names in `server.ts` (`ProcurementAttempt`, `SaleRecord`); that backend file was not changed. The skipped cross-instance auth test requires explicit second-instance/account environment.
+- Current (`main`, clean before this verification): `npm test` 18 total / 17 passed / 0 failed / 1 skipped; `npm run test:integration` 1 passed against a fresh local server; `npm run build` passed with existing Vite config and large-chunk warnings; `git diff --check` passed. `npm run lint` fails on two unresolved backend-owned names in `server.ts` (`ProcurementAttempt` at line 1181 and `SaleRecord` at line 1257); backend implementation was not changed. The cross-instance auth test is skipped without a configured second server/account.
+- Browser: fresh server on port 3002; local Farmer demo sign-in, dashboard Crop-to-Cash card, **Open Dedicated Screen**, Detect/Compare/Complete tabs, fixture values/provenance, and adding a comparison event to the same lot ledger were exercised. At 390px viewport, `document.documentElement.clientWidth` and `scrollWidth` were both 375px. Browser showed a Vite HMR websocket handshake error because port 24678 was already occupied; app navigation/workflow still functioned. Browser validation covered demo UI only, not real backend integration.
 
 ## Work completed in this audit
 
@@ -29,8 +30,33 @@
 - Kept the `/api/v1` adapter disabled because it does not match the current `/api/c2c` server routes.
 - The image remains preview-only; no diagnosis, upload, real-time quote, or server persistence is claimed.
 
+## Component verification matrix
+
+Status: `PASS` means the described behavior was exercised; `PARTIAL` means only a subset was checked; `BLOCKED` means a known integration issue prevents valid verification; `NOT TESTED` means no behavior test was run in this pass.
+
+| Route / component | Expected behavior | Observed behavior and evidence | Status | Defect / next action |
+|---|---|---|---|---|
+| Authentication and protected route — `AuthPage.tsx`, `KisanContext.tsx` | Sign-in opens authorized workspace; protected pages require a valid session. | Local Farmer demo sign-in succeeded in browser; `tests/server-auth.test.js` covers register/logout; token expiry tests pass. | PARTIAL | Test expiry, wrong-owner access, account switching; server Firebase ID-token verification not established. |
+| Onboarding — `OnboardingWizard.tsx`, `App.tsx` | `/onboarding` renders onboarding stages and saves completion. | Route branch exists; no browser completion or persistence test in this verification pass. | NOT TESTED | Exercise all steps and reload/profile state. |
+| App shell/navigation — `AppShell.tsx` | Route links include all existing modules and Crop-to-Cash. | Farmer dashboard entry, module dialog, and **Open Dedicated Screen** navigated to `/crop-to-cash`. | PASS | Add navigation regression test for all roles/routes. |
+| Farmer dashboard — `DashboardPage.tsx`, `PersonalizedDashboard.tsx` | Role-appropriate workspace and C2C entry. | Farmer workspace rendered; C2C card opened its detail dialog. | PARTIAL | Agent/buyer/admin dashboards and ownership isolation not tested. |
+| Crop-to-Cash Detect tab — `CropToCashPage.tsx` | Explain upload/preview limitations and do not imply diagnosis. | Browser showed “not connected” and “will not produce a diagnosis”; demo-only ledger was explicit. File chooser/invalid-file cases not exercised. | PARTIAL | Test valid/invalid/oversize selection; actual screening is metadata-only mock in server. |
+| Crop-to-Cash Compare tab — `CropToCashPage.tsx` | Show source/freshness, labeled estimates, downside, and same-lot event. | Browser showed DEMO provenance and all four fixture values; button appended `COMPARISON · DEMO` for `KS-MP-2025-089`; adapter and calculation tests pass. | PASS | UI uses demo adapter; live quote/backend input calculation is blocked by route mismatch. |
+| Crop-to-Cash Complete tab — `CropToCashPage.tsx` | Boolean readiness, procurement state/note, farmer-reported sale/payment values. | Browser rendered all controls and privacy/demo wording. No state mutation or sale submission run in browser. | PARTIAL | Server enums/defaults/sale semantics differ; test interaction and reconcile API before live use. |
+| Crop ledger — adapter and screen aside | Event list and lot IDs remain consistent; errors are visible. | Mock comparison appears in same lot's timeline; adapter tests check identity and response validation. | PARTIAL | Memory-only data; no refresh persistence or real endpoint verified. |
+| Advisory — `AdvisoryPage.tsx` | Show safe, evidence-backed guidance and label simulations. | Route/component exists; not interacted with in this pass. | NOT TESTED | Verify copy, model/demo distinction, and safe referral states. |
+| Crop passport / QR — `CropPassportPage.tsx` | Display current lot passport and QR verification state. | Route/component exists; not interacted with in this pass. | NOT TESTED | Verify actual QR payload and data source; demo/verified claims need review. |
+| Market comparison — `MarketComparisonPage.tsx` | Compare offers and communicate freshness/terms. | Route/component exists; not interacted with in this pass. | NOT TESTED | Verify whether prices are fixture/buyer inputs or live quotes; avoid unsupported claims. |
+| Harvest / payments — `HarvestPaymentsPage.tsx` | Track actual logistics/payment state without implying simulated transfer is real. | Route/component exists; not interacted with in this pass. | NOT TESTED | Review escrow/payment simulation labels and provider evidence. |
+| Admin — `AdminDashboardPage.tsx` | Restrict admin controls and show valid metrics/audit data. | Route/component exists; not interacted with in this pass. | NOT TESTED | Test role enforcement, audit log, and analytics privacy. |
+| Profile/settings/language/demo reset — context and app components | Persist profile/language and reset only intended demo state. | Existing context/components were not exercised in this pass. | NOT TESTED | Test persistence, account switching, and reset boundaries. |
+
 ## Remaining
 
 1. Agree a canonical, durable lot source and approve a frontend-compatible API; current C2C server data is in memory and route schemas do not match the adapter.
 2. Have the backend owner resolve the two TypeScript errors in `server.ts`, then rerun the project type-check.
 3. Add real image upload/screening and live quote provenance only after contract approval; finish bilingual, keyboard, screen-reader, reduced-motion, procurement, and sale browser tests.
+
+## Overall conclusion
+
+The local demo journey works from Farmer sign-in through same-lot comparison and memory-only timeline update. It is not a complete real Crop-to-Cash journey: source-level `/api/c2c` endpoints are incompatible with the disabled `/api/v1` adapter; image screening is mock metadata-only; quotes are fictional; records are in process memory; and procurement/payment confirmation is not verified. Relevant modules outside the Crop-to-Cash browser pass are listed above as not tested or partial. Do not describe the app as production-ready or 10x-capable based on this evidence.
