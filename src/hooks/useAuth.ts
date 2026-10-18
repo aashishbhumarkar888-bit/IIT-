@@ -146,6 +146,21 @@ export function useAuthSession({
     cleanupAllFirestoreSubscriptions();
   }, []);
 
+  const clearLocalSession = useCallback(() => {
+    detachLotsSubscription();
+    onWorkspaceReset();
+    setToken(null);
+    setUser(null);
+    setProfileStatus('IDLE');
+    setProfileError(null);
+    setAuthStatus('UNAUTHENTICATED');
+    try {
+      sessionStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
+    } catch {
+      // Ignore unavailable browser storage.
+    }
+  }, [detachLotsSubscription, onWorkspaceReset]);
+
   const determinePostLoginDestination = useCallback(
     (authedUser: AuthenticatedUser, preferredDest?: AppRoute): AppRoute => {
       if (authedUser.role === 'admin' && preferredDest === '/admin') {
@@ -317,12 +332,7 @@ export function useAuthSession({
 
       if (!savedToken) {
         if (!cancelled && seq === authOperationSeqRef.current) {
-          setUser(null);
-          setToken(null);
-          onWorkspaceReset();
-          setProfileStatus('IDLE');
-          setProfileError(null);
-          setAuthStatus('UNAUTHENTICATED');
+          clearLocalSession();
           syncHistory(
             PUBLIC_AUTH_ROUTES.includes(initialPath) ? initialPath : '/login'
           );
@@ -365,17 +375,7 @@ export function useAuthSession({
           const target = determinePostLoginDestination(data.user, initialPath);
           syncHistory(target);
         } else {
-          try {
-            sessionStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
-          } catch {
-            // Ignore
-          }
-          setUser(null);
-          setToken(null);
-          onWorkspaceReset();
-          setProfileStatus('IDLE');
-          setProfileError(null);
-          setAuthStatus('UNAUTHENTICATED');
+          clearLocalSession();
           syncHistory('/login');
         }
       } catch {
@@ -384,6 +384,7 @@ export function useAuthSession({
           setProfileError(
             'Could not verify your saved session due to a network error. Please retry or sign in again.'
           );
+          setAuthStatus('UNAUTHENTICATED');
         }
       }
     });
@@ -397,12 +398,12 @@ export function useAuthSession({
     initialPath,
     syncHistory,
     determinePostLoginDestination,
+    clearLocalSession,
     detachLotsSubscription,
     initializeFirebaseSession,
     onRoleSynchronized,
     onLanguageSynchronized,
     onLotsSynchronized,
-    onWorkspaceReset,
   ]);
 
   const retryProfileInit = useCallback(async () => {
@@ -419,9 +420,7 @@ export function useAuthSession({
       // Ignore
     }
     if (!savedToken) {
-      setProfileStatus('IDLE');
-      setProfileError(null);
-      setAuthStatus('UNAUTHENTICATED');
+      clearLocalSession();
       syncHistory('/login');
       return;
     }
@@ -452,9 +451,7 @@ export function useAuthSession({
         const target = determinePostLoginDestination(data.user, intendedRoute);
         syncHistory(target);
       } else {
-        setProfileStatus('IDLE');
-        setProfileError(null);
-        setAuthStatus('UNAUTHENTICATED');
+        clearLocalSession();
         syncHistory('/login');
       }
     } catch {
@@ -467,6 +464,7 @@ export function useAuthSession({
     determinePostLoginDestination,
     initializeFirebaseSession,
     intendedRoute,
+    clearLocalSession,
     onLotsSynchronized,
     syncHistory,
   ]);
@@ -856,19 +854,7 @@ export function useAuthSession({
     async (sessionExpired?: boolean | unknown) => {
       ++authOperationSeqRef.current;
       // Immediately clear private user state before async network / Firebase sign-out completes
-      detachLotsSubscription();
-      onWorkspaceReset();
-      setToken(null);
-      setUser(null);
-      setProfileStatus('IDLE');
-      setProfileError(null);
-      setAuthStatus('UNAUTHENTICATED');
-
-      try {
-        sessionStorage.removeItem(SESSION_TOKEN_STORAGE_KEY);
-      } catch {
-        // Ignore
-      }
+      clearLocalSession();
 
       try {
         await signOutFromFirebase();
@@ -896,7 +882,7 @@ export function useAuthSession({
         sessionExpired === true ? 'saffron' : 'blue'
       );
     },
-    [token, detachLotsSubscription, onWorkspaceReset, syncHistory, showToast]
+    [token, clearLocalSession, syncHistory, showToast]
   );
 
   return {
