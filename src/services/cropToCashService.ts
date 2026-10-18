@@ -158,6 +158,7 @@ export interface CropPassportHistoryEvent {
   actorRole: string;
   eventType:
     | 'LOT_CREATED'
+    | 'LOT_UPDATED'
     | 'SCREENING_PERFORMED'
     | 'ESTIMATE_GENERATED'
     | 'PROCUREMENT_ATTEMPT'
@@ -567,4 +568,12 @@ export function saveExtendedLot(lot: ExtendedCropLotRecord): void {
 
 export function getAllExtendedLots(): ExtendedCropLotRecord[] {
   return Array.from(extendedCropLots.values());
+}
+
+export function deleteExtendedLot(lotId: string): boolean {
+  const existed = extendedCropLots.delete(lotId);
+  if (existed) {
+    persistExtendedLotsToDisk();
+  }
+  return existed;
 }

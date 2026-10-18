@@ -16,6 +16,7 @@ import {
   getExtendedLot,
   saveExtendedLot,
   getAllExtendedLots,
+  deleteExtendedLot,
 } from './src/services/cropToCashService';
 import { calculateSellingOptions } from './src/services/cropToCashCalculations';
 import {
@@ -1791,6 +1792,103 @@ async function startServer() {
       const lot = getOwnedLotOrError(req, res);
       if (!lot) return;
       res.json(lot);
+    }
+  );
+
+  // V1-3b: Update mutable fields on owned crop lot
+  app.put(
+    '/api/v1/lots/:lotId',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const { variety, grade, quantityQuintals, harvestDate, surveyNumber } =
+        req.body || {};
+
+      if (quantityQuintals !== undefined) {
+        const qty = Number(quantityQuintals);
+        if (!Number.isFinite(qty) || qty <= 0) {
+          sendV1Error(
+            res,
+            400,
+            'INVALID_INPUT',
+            'Quantity in quintals must be a positive number.'
+          );
+          return;
+        }
+        lot.quantityQuintals = qty;
+        lot.plotAreaHectares = Number((qty * 0.08).toFixed(2));
+      }
+
+      if (typeof variety === 'string' && variety.trim()) {
+        lot.variety = variety.trim().slice(0, 80);
+      }
+      if (typeof grade === 'string' && grade.trim()) {
+        lot.grade = grade.trim().slice(0, 80);
+      }
+      if (typeof harvestDate === 'string' && harvestDate.trim()) {
+        lot.harvestDate = harvestDate.trim().slice(0, 40);
+      }
+      if (typeof surveyNumber === 'string' && surveyNumber.trim()) {
+        lot.surveyNumber = surveyNumber.trim().slice(0, 60);
+      }
+
+      const now = new Date().toISOString();
+      lot.updatedAt = now;
+      lot.historyEvents.push({
+        eventId: `EV-${Date.now()}-UPD`,
+        timestamp: now,
+        actor: (req as Request & { user: ServerUserRecord }).user.email,
+        actorRole: (req as Request & { user: ServerUserRecord }).user.role,
+        eventType: 'LOT_UPDATED',
+        summary: `Updated lot details: ${lot.cropName} (${lot.quantityQuintals} qtl).`,
+        isVerified: false,
+        details: {
+          variety: lot.variety,
+          grade: lot.grade,
+          quantityQuintals: lot.quantityQuintals,
+        },
+      });
+
+      saveExtendedLot(lot);
+      res.json(lot);
+    }
+  );
+
+  // V1-3c: Delete / Archive owned crop lot
+  app.delete(
+    '/api/v1/lots/:lotId',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      if (SEEDED_DEMO_LOT_IDS.has(lot.id)) {
+        sendV1Error(
+          res,
+          400,
+          'RESERVED_DEMO_LOT',
+          'Demonstration reference crop lots are protected and cannot be deleted.'
+        );
+        return;
+      }
+
+      deleteExtendedLot(lot.id);
+
+      // Clean from userCropLotsMap as well
+      const user = (req as Request & { user: ServerUserRecord }).user;
+      const userLots = userCropLotsMap.get(user.email) || [];
+      userCropLotsMap.set(
+        user.email,
+        userLots.filter((l) => l.id !== lot.id)
+      );
+
+      res.json({
+        success: true,
+        message: `Crop lot ${lot.id} has been archived/deleted.`,
+        lotId: lot.id,
+      });
     }
   );
 
