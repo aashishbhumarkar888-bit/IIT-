@@ -30,6 +30,7 @@ export const CropPassportPage: React.FC<CropPassportPageProps> = ({
   const {
     currentLot,
     currentPlot,
+    allLots,
     selectedLotId,
     setSelectedLotId,
     updateLotVerificationStatus,
@@ -49,10 +50,14 @@ export const CropPassportPage: React.FC<CropPassportPageProps> = ({
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const scannedLot = params.get('lot');
-    if (scannedLot && CROP_LOTS.some((l) => l.id === scannedLot)) {
+    if (
+      scannedLot &&
+      (allLots.some((l) => l.id === scannedLot) ||
+        CROP_LOTS.some((l) => l.id === scannedLot))
+    ) {
       setSelectedLotId(scannedLot);
     }
-  }, [setSelectedLotId]);
+  }, [allLots, setSelectedLotId]);
 
   const activeQrLotId = customLotIdInput.trim() || currentLot.id;
 

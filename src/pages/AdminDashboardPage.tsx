@@ -8,6 +8,7 @@ import {
   BUYER_OFFERS,
   FARM_PLOTS,
 } from '../data/kisanData';
+import { useAuth } from '../hooks/useAuth';
 import { formatINR, getVerificationBadgeMeta } from '../services/kisanService';
 import { VerificationStatus } from '../types/kisan';
 
@@ -33,15 +34,13 @@ interface ServerAuditLog {
 
 export const AdminDashboardPage: React.FC = () => {
   const {
-    user,
-    token,
     navigate,
-    logout,
     allLots,
     updateLotVerificationStatus,
     payment,
     showToast,
   } = useKisan();
+  const { user, token, logout } = useAuth();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [usersList, setUsersList] = useState<AuthenticatedUser[]>([]);

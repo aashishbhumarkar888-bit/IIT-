@@ -9,10 +9,22 @@ import {
 } from './serverSession';
 import {
   CropToCashService,
+  DEFAULT_CROP_READINESS,
   ExtendedCropLotRecord,
+  ProcurementAttempt,
+  SaleRecord,
   getExtendedLot,
   saveExtendedLot,
   getAllExtendedLots,
+  deleteExtendedLot,
+} from './src/services/cropToCashService';
+import { calculateSellingOptions } from './src/services/cropToCashCalculations';
+import {
+  ComparisonResult,
+  CropLedgerEvent,
+  CropToCashSnapshot,
+  ProcurementState,
+  SellingQuote,
   ProcurementAttempt,
   SaleRecord,
 } from './src/services/cropToCashService';
@@ -96,7 +108,9 @@ interface ServerUserRecord {
   preferredLanguage: 'en' | 'hi';
   onboardingStatus: ServerOnboardingStatus;
   onboardingStep: number;
+  onboardingCompletedAt?: string;
   profileCompletion: number;
+  profileSchemaVersion?: number;
   isDemoAccount: boolean;
   demoDatasetVersion: string;
   uidLabel: string;
@@ -107,6 +121,43 @@ interface ServerUserRecord {
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string;
+}
+
+function computeServerProfileCompletion(params: {
+  name?: string;
+  role?: string;
+  preferredLanguage?: string;
+  village?: string;
+  district?: string;
+  state?: string;
+  onboardingStatus?: ServerOnboardingStatus;
+}): number {
+  let score = 0;
+  if (params.name && params.name.trim().length > 0) {
+    score += 25;
+  }
+  if (
+    (params.role === 'farmer' ||
+      params.role === 'agent' ||
+      params.role === 'buyer' ||
+      params.role === 'admin') &&
+    (params.preferredLanguage === 'en' || params.preferredLanguage === 'hi')
+  ) {
+    score += 25;
+  }
+  if (
+    Boolean(
+      (params.village && params.village.trim()) ||
+        (params.district && params.district.trim()) ||
+        (params.state && params.state.trim())
+    )
+  ) {
+    score += 25;
+  }
+  if (params.onboardingStatus === 'COMPLETED') {
+    score += 25;
+  }
+  return Math.max(25, Math.min(100, score));
 }
 
 interface AuditLogEntry {
@@ -184,7 +235,20 @@ function seedUser(params: {
     preferredLanguage: params.preferredLanguage || 'en',
     onboardingStatus: params.onboardingStatus,
     onboardingStep: params.onboardingStep,
-    profileCompletion: params.profileCompletion,
+    onboardingCompletedAt:
+      params.onboardingStatus === 'COMPLETED'
+        ? '2026-10-01 09:05 IST'
+        : undefined,
+    profileCompletion: computeServerProfileCompletion({
+      name: params.name,
+      role: params.role,
+      preferredLanguage: params.preferredLanguage || 'en',
+      village: params.village,
+      district: params.district,
+      state: params.state,
+      onboardingStatus: params.onboardingStatus,
+    }),
+    profileSchemaVersion: 1,
     isDemoAccount: params.isDemoAccount,
     demoDatasetVersion: params.demoDatasetVersion || '',
     uidLabel: params.uidLabel,
@@ -441,7 +505,9 @@ function sanitizeUser(u: ServerUserRecord) {
     preferredLanguage: u.preferredLanguage,
     onboardingStatus: u.onboardingStatus,
     onboardingStep: u.onboardingStep,
+    onboardingCompletedAt: u.onboardingCompletedAt,
     profileCompletion: u.profileCompletion,
+    profileSchemaVersion: u.profileSchemaVersion ?? 1,
     isDemoAccount: u.isDemoAccount,
     demoDatasetVersion: u.demoDatasetVersion,
     uidLabel: u.uidLabel,
@@ -557,36 +623,52 @@ async function startServer() {
       const { salt, hash } = hashPassword(
         crypto.randomBytes(24).toString('hex')
       );
+      const initialStatus: ServerOnboardingStatus =
+        onboardingStatus === 'COMPLETED' || onboardingStatus === 'SKIPPED'
+          ? onboardingStatus
+          : isBootstrappedAdmin
+          ? 'COMPLETED'
+          : 'INCOMPLETE';
+      const initialName = String(
+        displayName || normalizedEmail.split('@')[0]
+      ).trim();
+      const initialVillage = String(village || '').trim();
+      const initialDistrict = String(district || '').trim();
+      const initialState = String(state || '').trim();
+      const initialLang: 'en' | 'hi' =
+        preferredLanguage === 'hi' ? 'hi' : 'en';
+
       user = {
         id: String(uid).slice(0, 28),
         email: normalizedEmail,
-        name: String(displayName || normalizedEmail.split('@')[0]).trim(),
-        nameHi: String(displayName || normalizedEmail.split('@')[0]).trim(),
+        name: initialName,
+        nameHi: initialName,
         role: safeRole,
         villageOrOrg: String(villageOrOrg || 'Unassigned Workspace').trim(),
-        village: String(village || '').trim(),
-        district: String(district || '').trim(),
-        state: String(state || '').trim(),
+        village: initialVillage,
+        district: initialDistrict,
+        state: initialState,
         phoneNumber: String(phoneNumber || '').trim(),
-        preferredLanguage: preferredLanguage === 'hi' ? 'hi' : 'en',
-        onboardingStatus:
-          onboardingStatus === 'COMPLETED' || onboardingStatus === 'SKIPPED'
-            ? onboardingStatus
-            : isBootstrappedAdmin
-            ? 'COMPLETED'
-            : 'INCOMPLETE',
+        preferredLanguage: initialLang,
+        onboardingStatus: initialStatus,
         onboardingStep:
           typeof onboardingStep === 'number'
             ? Math.max(1, Math.min(4, onboardingStep))
             : isBootstrappedAdmin
             ? 4
             : 1,
-        profileCompletion:
-          typeof profileCompletion === 'number'
-            ? Math.max(0, Math.min(100, profileCompletion))
-            : isBootstrappedAdmin
-            ? 100
-            : 25,
+        onboardingCompletedAt:
+          initialStatus === 'COMPLETED' ? 'Just now' : undefined,
+        profileCompletion: computeServerProfileCompletion({
+          name: initialName,
+          role: safeRole,
+          preferredLanguage: initialLang,
+          village: initialVillage,
+          district: initialDistrict,
+          state: initialState,
+          onboardingStatus: initialStatus,
+        }),
+        profileSchemaVersion: 1,
         isDemoAccount: false,
         demoDatasetVersion: '',
         uidLabel: `FB-${String(uid).slice(0, 6).toUpperCase()}`,
@@ -608,19 +690,55 @@ async function startServer() {
       if (isBootstrappedAdmin) {
         user.role = 'admin';
       }
+      // Preserve non-empty user values and never downgrade completed onboarding
       if (
-        onboardingStatus === 'COMPLETED' ||
-        onboardingStatus === 'SKIPPED' ||
-        onboardingStatus === 'INCOMPLETE'
+        typeof displayName === 'string' &&
+        displayName.trim() &&
+        (!user.name || user.name === 'Kisan-SPO Member')
+      ) {
+        user.name = displayName.trim();
+        user.nameHi = displayName.trim();
+      }
+      if (typeof village === 'string' && village.trim() && !user.village) {
+        user.village = village.trim();
+      }
+      if (typeof district === 'string' && district.trim() && !user.district) {
+        user.district = district.trim();
+      }
+      if (typeof state === 'string' && state.trim() && !user.state) {
+        user.state = state.trim();
+      }
+      if (
+        typeof phoneNumber === 'string' &&
+        phoneNumber.trim() &&
+        !user.phoneNumber
+      ) {
+        user.phoneNumber = phoneNumber.trim();
+      }
+      if (
+        user.onboardingStatus !== 'COMPLETED' &&
+        (onboardingStatus === 'COMPLETED' || onboardingStatus === 'SKIPPED')
       ) {
         user.onboardingStatus = onboardingStatus;
+        if (onboardingStatus === 'COMPLETED') {
+          user.onboardingCompletedAt = 'Just now';
+        }
       }
       if (typeof onboardingStep === 'number') {
-        user.onboardingStep = Math.max(1, Math.min(4, onboardingStep));
+        user.onboardingStep = Math.max(
+          user.onboardingStep || 1,
+          Math.max(1, Math.min(4, onboardingStep))
+        );
       }
-      if (typeof profileCompletion === 'number') {
-        user.profileCompletion = Math.max(0, Math.min(100, profileCompletion));
-      }
+      user.profileCompletion = computeServerProfileCompletion({
+        name: user.name,
+        role: user.role,
+        preferredLanguage: user.preferredLanguage,
+        village: user.village,
+        district: user.district,
+        state: user.state,
+        onboardingStatus: user.onboardingStatus,
+      });
     }
 
     if (!user.active) {
@@ -772,7 +890,16 @@ async function startServer() {
       preferredLanguage: 'en',
       onboardingStatus: 'INCOMPLETE',
       onboardingStep: 1,
-      profileCompletion: 25,
+      profileCompletion: computeServerProfileCompletion({
+        name: String(name).trim(),
+        role: allowedRole,
+        preferredLanguage: 'en',
+        village: trimmedVillage,
+        district: '',
+        state: '',
+        onboardingStatus: 'INCOMPLETE',
+      }),
+      profileSchemaVersion: 1,
       isDemoAccount: false,
       demoDatasetVersion: '',
       uidLabel: `UID-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -872,16 +999,23 @@ async function startServer() {
       onboardingStatus === 'SKIPPED'
     ) {
       user.onboardingStatus = onboardingStatus;
+      if (onboardingStatus === 'COMPLETED' && !user.onboardingCompletedAt) {
+        user.onboardingCompletedAt = 'Just now';
+      }
     }
     if (typeof onboardingStep === 'number') {
       user.onboardingStep = Math.max(1, Math.min(4, Math.round(onboardingStep)));
     }
-    if (typeof profileCompletion === 'number') {
-      user.profileCompletion = Math.max(
-        0,
-        Math.min(100, Math.round(profileCompletion))
-      );
-    }
+    user.profileCompletion = computeServerProfileCompletion({
+      name: user.name,
+      role: user.role,
+      preferredLanguage: user.preferredLanguage,
+      village: user.village,
+      district: user.district,
+      state: user.state,
+      onboardingStatus: user.onboardingStatus,
+    });
+    user.profileSchemaVersion = 1;
 
     user.updatedAt = 'Just now';
 
@@ -962,6 +1096,51 @@ async function startServer() {
 
     const updatedLots = [newLot, ...existingLots];
     userCropLotsMap.set(user.email, updatedLots);
+
+    const nowIso = new Date().toISOString();
+    saveExtendedLot({
+      id: newLot.id,
+      ownerEmail: user.email,
+      ownerId: user.id,
+      farmerName: user.name,
+      cropName: newLot.cropName,
+      variety: newLot.variety,
+      grade: newLot.grade,
+      quantityQuintals: newLot.quantityQuintals,
+      harvestDate: newLot.harvestDate,
+      surveyNumber: newLot.surveyNumber,
+      plotAreaHectares: newLot.plotAreaHectares,
+      screeningResults: [],
+      procurementAttempts: [],
+      historyEvents: [
+        {
+          eventId: `EV-${Date.now()}-1`,
+          timestamp: nowIso,
+          actor: user.email,
+          actorRole: user.role,
+          eventType: 'LOT_CREATED',
+          summary: `Crop Lot ${newLot.id} created for ${newLot.quantityQuintals} quintals of ${newLot.cropName}.`,
+          isVerified: false,
+          details: { cropName: newLot.cropName, quantityQuintals: newLot.quantityQuintals },
+        },
+      ],
+      readiness: DEFAULT_CROP_READINESS.map((item) => ({ ...item })),
+      procurementState: 'PLANNED',
+      ledgerEvents: [
+        {
+          eventId: `ev-init-${newLot.id}`,
+          lotId: newLot.id,
+          type: 'READINESS',
+          occurredAt: nowIso,
+          source: 'MANUAL',
+          verification: 'USER_REPORTED',
+          summary: `Crop-to-cash ledger opened for ${newLot.cropName} (${newLot.id}).`,
+          payload: { initialized: true },
+        },
+      ],
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
 
     recordAudit(
       user.email,
@@ -1059,6 +1238,20 @@ async function startServer() {
           summary: `Crop Lot ${lotId} created for ${qty} quintals of ${cropName}.`,
           isVerified: false,
           details: { cropName, quantityQuintals: qty },
+        },
+      ],
+      readiness: DEFAULT_CROP_READINESS.map((item) => ({ ...item })),
+      procurementState: 'PLANNED',
+      ledgerEvents: [
+        {
+          eventId: `ev-init-${lotId}`,
+          lotId,
+          type: 'READINESS',
+          occurredAt: now,
+          source: 'MANUAL',
+          verification: 'USER_REPORTED',
+          summary: `Crop-to-cash ledger opened for ${cropName.trim()} (${lotId}).`,
+          payload: { initialized: true },
         },
       ],
       createdAt: now,
@@ -1366,6 +1559,10 @@ async function startServer() {
   });
 
   // =========================================================================
+  // Crop-to-Cash REST API v1 (/api/v1/lots/*) — Typed Adapter Contract
+  // =========================================================================
+
+  const sendV1Error = (
   // Crop-to-Cash v1 REST API Endpoints (Frontend Adapter Contract)
   // =========================================================================
 
@@ -1375,6 +1572,7 @@ async function startServer() {
     code: string,
     message: string,
     retryable = false
+  ) => {
   ) {
     res.status(status).json({
       error: {
@@ -1383,18 +1581,32 @@ async function startServer() {
         retryable,
       },
     });
+  };
   }
 
   const requireUserV1 = (req: Request, res: Response, next: NextFunction) => {
     const token = extractToken(req);
     const user = verifySignedToken(token);
     if (!user) {
+      sendV1Error(
+        res,
+        401,
+        'UNAUTHORIZED',
+        'Authentication required. Please sign in again.',
+        false
+      );
       apiV1Error(res, 401, 'UNAUTHORIZED', 'Authentication required.', false);
       return;
     }
     (req as Request & { user: ServerUserRecord }).user = user;
     next();
   };
+
+  const SEEDED_DEMO_LOT_IDS = new Set([
+    'KS-MP-2025-089',
+    'KS-MP-2025-094',
+    'KS-MH-2025-210',
+  ]);
 
   const getOwnedLotOrError = (
     req: Request,
@@ -1403,6 +1615,25 @@ async function startServer() {
     const user = (req as Request & { user: ServerUserRecord }).user;
     const { lotId } = req.params;
     const lot = getExtendedLot(lotId);
+
+    if (!lot) {
+      sendV1Error(
+        res,
+        404,
+        'LOT_NOT_FOUND',
+        `Crop lot ${lotId} was not found.`,
+        false
+      );
+      return null;
+    }
+
+    const isSeededDemo = SEEDED_DEMO_LOT_IDS.has(lot.id);
+    if (
+      !isSeededDemo &&
+      lot.ownerEmail !== user.email &&
+      user.role !== 'admin'
+    ) {
+      sendV1Error(
     if (!lot) {
       apiV1Error(res, 404, 'NOT_FOUND', `Crop lot '${lotId}' not found.`, false);
       return null;
@@ -1421,6 +1652,74 @@ async function startServer() {
       );
       return null;
     }
+
+    return lot;
+  };
+
+  const buildQuotesForLot = (lot: ExtendedCropLotRecord): SellingQuote[] => {
+    const timestamp = '2026-10-18T00:00:00.000Z';
+    return [
+      {
+        option: 'FCI_MSP_REFERENCE',
+        lotId: lot.id,
+        pricePerQuintal: 2585,
+        commodity: lot.cropName || 'Sharbati wheat',
+        grade: lot.grade || 'FAQ (illustrative)',
+        market: 'Illustrative FCI/MSP reference',
+        source: 'Official MSP Reference Schedule (Demo)',
+        timestamp,
+        freshness: 'Demo fixture; not a live quote',
+        provenance: 'DEMO',
+      },
+      {
+        option: 'MANDI',
+        lotId: lot.id,
+        pricePerQuintal: 2300,
+        commodity: lot.cropName || 'Sharbati wheat',
+        grade: lot.grade || 'FAQ (illustrative)',
+        market: 'Illustrative local APMC mandi',
+        source: 'Local Mandi Reference Fixture (Demo)',
+        timestamp,
+        freshness: 'Demo fixture; not a live quote',
+        provenance: 'DEMO',
+        minimumRate: 2200,
+        maximumRate: 2400,
+        modalRate: 2300,
+      },
+      {
+        option: 'DIRECT_BUYER',
+        lotId: lot.id,
+        pricePerQuintal: 2350,
+        commodity: lot.cropName || 'Sharbati wheat',
+        grade: lot.grade || 'FAQ (illustrative)',
+        market: 'Illustrative direct institutional buyer',
+        source: 'Registered Institutional Buyer Fixture (Demo)',
+        timestamp,
+        freshness: 'Demo fixture; not a live quote',
+        provenance: 'DEMO',
+      },
+    ];
+  };
+
+  // V1-1: List authenticated user's owned lots
+  app.get('/api/v1/lots', requireUserV1, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const lots = getAllExtendedLots().filter(
+      (lot) =>
+        lot.ownerEmail === user.email ||
+        user.role === 'admin' ||
+        (user.isDemoAccount && SEEDED_DEMO_LOT_IDS.has(lot.id))
+    );
+    res.json(lots);
+  });
+
+  // V1-2: Create lot with stable ID & init ledger
+  app.post('/api/v1/lots', requireUserV1, (req: Request, res: Response) => {
+    const user = (req as Request & { user: ServerUserRecord }).user;
+    const {
+      cropName,
+      variety,
+      grade,
     return lot;
   };
 
@@ -1452,6 +1751,27 @@ async function startServer() {
       surveyNumber,
     } = req.body || {};
 
+    if (!cropName || typeof cropName !== 'string' || !cropName.trim()) {
+      sendV1Error(res, 400, 'INVALID_INPUT', 'Valid cropName is required.');
+      return;
+    }
+
+    const qty = Math.max(1, Number(quantityQuintals) || 50);
+    const lotId = `KS-LOT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const now = new Date().toISOString();
+
+    const initialEvent: CropLedgerEvent = {
+      eventId: `ev-init-${Date.now()}`,
+      lotId,
+      type: 'READINESS',
+      occurredAt: now,
+      source: 'MANUAL',
+      verification: 'USER_REPORTED',
+      summary: `Crop-to-cash ledger opened for ${cropName.trim()} (${qty} qtl).`,
+      payload: { initialized: true, quantityQtl: qty },
+    };
+
+    const lot: ExtendedCropLotRecord = {
     const actualCrop = String(cropName || crop || '').trim();
     if (!actualCrop) {
       apiV1Error(
@@ -1484,6 +1804,7 @@ async function startServer() {
       ownerEmail: user.email,
       ownerId: user.id,
       farmerName: user.name,
+      cropName: cropName.trim(),
       cropName: actualCrop,
       variety: String(variety || 'Standard FAQ Grade').trim(),
       grade: String(grade || 'Grade A').trim(),
@@ -1493,6 +1814,9 @@ async function startServer() {
       plotAreaHectares: Number((qty * 0.08).toFixed(2)),
       screeningResults: [],
       procurementAttempts: [],
+      historyEvents: [
+        {
+          eventId: `EV-${Date.now()}-1`,
       readiness: {
         registration: true,
         bankAccount: true,
@@ -1519,6 +1843,14 @@ async function startServer() {
           actor: user.email,
           actorRole: user.role,
           eventType: 'LOT_CREATED',
+          summary: `Crop Lot ${lotId} created for ${qty} quintals of ${cropName.trim()}.`,
+          isVerified: false,
+          details: { cropName: cropName.trim(), quantityQuintals: qty },
+        },
+      ],
+      readiness: DEFAULT_CROP_READINESS.map((item) => ({ ...item })),
+      procurementState: 'PLANNED',
+      ledgerEvents: [initialEvent],
           summary: `Crop Lot ${lotId} created for ${qty} quintals of ${actualCrop}.`,
           isVerified: true,
           details: { cropName: actualCrop, quantityQuintals: qty },
@@ -1528,6 +1860,49 @@ async function startServer() {
       updatedAt: now,
     };
 
+    saveExtendedLot(lot);
+
+    const userLots = userCropLotsMap.get(user.email) || [];
+    const seq = userLots.length + 1;
+    const serverLot: ServerCropLotRecord = {
+      id: lot.id,
+      shortCode: `#KS-${100 + seq}`,
+      farmerId: user.id,
+      farmerName: user.name,
+      farmerNameHi: user.nameHi,
+      cropName: lot.cropName,
+      cropNameHi: lot.cropName,
+      variety: lot.variety,
+      varietyHi: lot.variety,
+      grade: lot.grade,
+      quantityQuintals: lot.quantityQuintals,
+      harvestDate: lot.harvestDate,
+      plotAreaHectares: lot.plotAreaHectares,
+      surveyNumber: lot.surveyNumber,
+      verificationStatus: 'FARMER_DECLARED',
+      evidenceIds: [`EV-${lot.id}`],
+      evidence: {
+        id: `EV-${lot.id}`,
+        labName: 'Farmer Self-Declaration (Pending FPO / NABL Verification)',
+        certificateNumber: `DECL-${100 + seq}-2026`,
+        testedDate: 'Just now',
+        mrlStatus: 'SELF_DECLARED',
+        sha256Hash: crypto
+          .createHash('sha256')
+          .update(`${lot.id}-${user.email}`)
+          .digest('hex'),
+        moisturePercent: 11.2,
+        foreignMatterPercent: 0.9,
+      },
+      mandiPricePerQuintal: 1820,
+      directBuyerPricePerQuintal: 2150,
+    };
+    userCropLotsMap.set(user.email, [serverLot, ...userLots]);
+
+    res.status(201).json(lot);
+  });
+
+  // V1-3: Retrieve single owned lot by ID
     saveExtendedLot(newLot);
     recordAudit(
       user.email,
@@ -1551,6 +1926,104 @@ async function startServer() {
     }
   );
 
+  // V1-3b: Update mutable fields on owned crop lot
+  app.put(
+    '/api/v1/lots/:lotId',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const { variety, grade, quantityQuintals, harvestDate, surveyNumber } =
+        req.body || {};
+
+      if (quantityQuintals !== undefined) {
+        const qty = Number(quantityQuintals);
+        if (!Number.isFinite(qty) || qty <= 0) {
+          sendV1Error(
+            res,
+            400,
+            'INVALID_INPUT',
+            'Quantity in quintals must be a positive number.'
+          );
+          return;
+        }
+        lot.quantityQuintals = qty;
+        lot.plotAreaHectares = Number((qty * 0.08).toFixed(2));
+      }
+
+      if (typeof variety === 'string' && variety.trim()) {
+        lot.variety = variety.trim().slice(0, 80);
+      }
+      if (typeof grade === 'string' && grade.trim()) {
+        lot.grade = grade.trim().slice(0, 80);
+      }
+      if (typeof harvestDate === 'string' && harvestDate.trim()) {
+        lot.harvestDate = harvestDate.trim().slice(0, 40);
+      }
+      if (typeof surveyNumber === 'string' && surveyNumber.trim()) {
+        lot.surveyNumber = surveyNumber.trim().slice(0, 60);
+      }
+
+      const now = new Date().toISOString();
+      lot.updatedAt = now;
+      lot.historyEvents.push({
+        eventId: `EV-${Date.now()}-UPD`,
+        timestamp: now,
+        actor: (req as Request & { user: ServerUserRecord }).user.email,
+        actorRole: (req as Request & { user: ServerUserRecord }).user.role,
+        eventType: 'LOT_UPDATED',
+        summary: `Updated lot details: ${lot.cropName} (${lot.quantityQuintals} qtl).`,
+        isVerified: false,
+        details: {
+          variety: lot.variety,
+          grade: lot.grade,
+          quantityQuintals: lot.quantityQuintals,
+        },
+      });
+
+      saveExtendedLot(lot);
+      res.json(lot);
+    }
+  );
+
+  // V1-3c: Delete / Archive owned crop lot
+  app.delete(
+    '/api/v1/lots/:lotId',
+    requireUserV1,
+    (req: Request, res: Response) => {
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      if (SEEDED_DEMO_LOT_IDS.has(lot.id)) {
+        sendV1Error(
+          res,
+          400,
+          'RESERVED_DEMO_LOT',
+          'Demonstration reference crop lots are protected and cannot be deleted.'
+        );
+        return;
+      }
+
+      deleteExtendedLot(lot.id);
+
+      // Clean from userCropLotsMap as well
+      const user = (req as Request & { user: ServerUserRecord }).user;
+      const userLots = userCropLotsMap.get(user.email) || [];
+      userCropLotsMap.set(
+        user.email,
+        userLots.filter((l) => l.id !== lot.id)
+      );
+
+      res.json({
+        success: true,
+        message: `Crop lot ${lot.id} has been archived/deleted.`,
+        lotId: lot.id,
+      });
+    }
+  );
+
+  // V1-4: Retrieve CropToCashSnapshot ledger
   // 4. Get Lot Ledger Snapshot
   app.get(
     '/api/v1/lots/:lotId/ledger',
@@ -1561,6 +2034,10 @@ async function startServer() {
 
       const snapshot: CropToCashSnapshot = {
         lotId: lot.id,
+        events: lot.ledgerEvents,
+        readiness: lot.readiness,
+        procurementState: lot.procurementState,
+      };
         events: lot.ledgerEvents || [],
         readiness: [
           {
@@ -1595,6 +2072,7 @@ async function startServer() {
     }
   );
 
+  // V1-5: Retrieve SellingQuotes for lot
   // 5. Get Quotes for Lot
   app.get(
     '/api/v1/lots/:lotId/quotes',
@@ -1602,6 +2080,13 @@ async function startServer() {
     (req: Request, res: Response) => {
       const lot = getOwnedLotOrError(req, res);
       if (!lot) return;
+      res.setHeader('Cache-Control', 'private, max-age=30, must-revalidate');
+      res.setHeader('Vary', 'Authorization');
+      res.json(buildQuotesForLot(lot));
+    }
+  );
+
+  // V1-6: Calculate deterministic comparison & append COMPARISON ledger event
 
       const quotes: SellingQuote[] = [
         {
@@ -1654,10 +2139,29 @@ async function startServer() {
     '/api/v1/lots/:lotId/comparisons',
     requireUserV1,
     (req: Request, res: Response) => {
+      const user = (req as Request & { user: ServerUserRecord }).user;
       const lot = getOwnedLotOrError(req, res);
       if (!lot) return;
 
       const { quantityQtl, costs } = req.body || {};
+      const qty = Number(quantityQtl ?? lot.quantityQuintals);
+      const safeCosts = {
+        fciCosts: Number(costs?.fciCosts ?? 2500),
+        mandiCosts: Number(costs?.mandiCosts ?? 4000),
+        directCosts: Number(costs?.directCosts ?? 4000),
+        extraTripCost: Number(costs?.extraTripCost ?? 1000),
+      };
+
+      const quotes = buildQuotesForLot(lot);
+      const calc = calculateSellingOptions(qty, quotes, safeCosts);
+      if (calc.error) {
+        sendV1Error(res, 422, 'INVALID_COMPARISON_INPUT', calc.error, false);
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const event: CropLedgerEvent = {
+        eventId: `cmp-${Date.now()}-${lot.ledgerEvents.length}`,
       const qty = Number(quantityQtl);
       if (!Number.isFinite(qty) || qty <= 0) {
         apiV1Error(
@@ -1710,6 +2214,40 @@ async function startServer() {
         type: 'COMPARISON',
         occurredAt: now,
         source: 'ESTIMATED',
+        verification: 'ESTIMATE — not an offer',
+        summary: `Compared selling options for ${qty} qtl.`,
+        payload: {
+          quantityQtl: qty,
+          ...Object.fromEntries(
+            calc.estimates.map((item) => [`${item.option}_net`, item.net])
+          ),
+          downsideNet: calc.downsideNet ?? 0,
+        },
+      };
+
+      lot.ledgerEvents.push(event);
+      lot.latestEstimate = CropToCashService.calculateReturnEstimate(
+        lot.id,
+        qty,
+        {
+          fciTransportCosts: safeCosts.fciCosts,
+          mandiTotalCosts: safeCosts.mandiCosts,
+          directTotalCosts: safeCosts.directCosts,
+          downsideTripCost: safeCosts.extraTripCost,
+        }
+      );
+      lot.updatedAt = now;
+      lot.historyEvents.push({
+        eventId: event.eventId,
+        timestamp: now,
+        actor: user.email,
+        actorRole: user.role,
+        eventType: 'ESTIMATE_GENERATED',
+        summary: event.summary,
+        isVerified: true,
+        details: event.payload,
+      });
+
         verification: 'ESTIMATE — deterministic engine v2.0',
         summary: `Compared selling options for ${qty} qtl: FCI ₹${fciNet}, Mandi ₹${mandiNet}, Direct ₹${directNet}`,
         payload: {
@@ -1729,6 +2267,10 @@ async function startServer() {
       const result: ComparisonResult = {
         lotId: lot.id,
         calculationVersion: 'v2.0-deterministic',
+        estimates: calc.estimates,
+        downsideNet: calc.downsideNet,
+        event,
+      };
         estimates: [
           {
             option: 'FCI_MSP_REFERENCE',
@@ -1757,6 +2299,7 @@ async function startServer() {
     }
   );
 
+  // V1-7: Record boolean readiness item (privacy-safe: rejects Aadhaar or raw PII)
   // 7. Append Readiness Event
   app.post(
     '/api/v1/lots/:lotId/readiness',
@@ -1765,6 +2308,52 @@ async function startServer() {
       const lot = getOwnedLotOrError(req, res);
       if (!lot) return;
 
+      const body = req.body || {};
+      const payload = body.payload || {};
+      if (
+        'aadhaar' in body ||
+        'aadhaarNumber' in body ||
+        'aadhaar' in payload ||
+        'aadhaarNumber' in payload
+      ) {
+        sendV1Error(
+          res,
+          400,
+          'PRIVACY_VIOLATION',
+          'Aadhaar numbers and identity document scans are strictly prohibited. Submit boolean readiness flags only.',
+          false
+        );
+        return;
+      }
+
+      const readinessId = String(
+        payload.readinessId || body.readinessId || 'registration'
+      );
+      const ready = Boolean(payload.ready ?? body.ready);
+      const now = new Date().toISOString();
+
+      lot.readiness = lot.readiness.map((item) =>
+        item.id === readinessId ? { ...item, ready } : item
+      );
+
+      const created: CropLedgerEvent = {
+        eventId: `rdy-${Date.now()}-${lot.ledgerEvents.length}`,
+        lotId: lot.id,
+        type: 'READINESS',
+        occurredAt: now,
+        source:
+          body.source === 'VERIFIED' ||
+          body.source === 'ESTIMATED' ||
+          body.source === 'CACHED' ||
+          body.source === 'MANUAL' ||
+          body.source === 'DEMO'
+            ? body.source
+            : 'MANUAL',
+        verification: String(body.verification || 'USER_REPORTED'),
+        summary: String(
+          body.summary ||
+            `${readinessId} readiness marked ${ready ? 'yes' : 'no'}.`
+        ),
       const { summary, payload, source, verification } = req.body || {};
       const readinessId = String(payload?.readinessId || '');
       const ready = Boolean(payload?.ready);
@@ -1791,6 +2380,25 @@ async function startServer() {
         },
       };
 
+      lot.ledgerEvents.push(created);
+      lot.updatedAt = now;
+      saveExtendedLot(lot);
+
+      res.status(201).json(created);
+    }
+  );
+
+  // V1-8: Record procurement visit / attempt state
+  const VALID_PROCUREMENT_STATES = new Set<ProcurementState>([
+    'PLANNED',
+    'VISITED',
+    'ACCEPTED',
+    'PENDING',
+    'REJECTED',
+    'RESCHEDULED',
+    'NOT_COMPLETED',
+  ]);
+
       lot.ledgerEvents = lot.ledgerEvents || [];
       lot.ledgerEvents.push(event);
       lot.updatedAt = now;
@@ -1804,6 +2412,91 @@ async function startServer() {
     '/api/v1/lots/:lotId/procurement-attempts',
     requireUserV1,
     (req: Request, res: Response) => {
+      const user = (req as Request & { user: ServerUserRecord }).user;
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const body = req.body || {};
+      const payload = body.payload || {};
+      const stateRaw = String(
+        payload.state || body.state || body.outcome || 'VISITED'
+      ) as ProcurementState;
+
+      if (!VALID_PROCUREMENT_STATES.has(stateRaw)) {
+        sendV1Error(
+          res,
+          422,
+          'INVALID_PROCUREMENT_STATE',
+          `Invalid procurement state: ${stateRaw}`,
+          false
+        );
+        return;
+      }
+
+      const reason = String(payload.reason || body.reason || '').slice(0, 240);
+      const now = new Date().toISOString();
+
+      lot.procurementState = stateRaw;
+
+      const created: CropLedgerEvent = {
+        eventId: `prc-${Date.now()}-${lot.ledgerEvents.length}`,
+        lotId: lot.id,
+        type: 'PROCUREMENT',
+        occurredAt: now,
+        source:
+          body.source === 'VERIFIED' ||
+          body.source === 'ESTIMATED' ||
+          body.source === 'CACHED' ||
+          body.source === 'MANUAL' ||
+          body.source === 'DEMO'
+            ? body.source
+            : 'MANUAL',
+        verification: String(body.verification || 'FARMER_REPORTED'),
+        summary: String(
+          body.summary ||
+            `Procurement attempt marked ${stateRaw}.${reason ? ` Reason: ${reason}` : ''}`
+        ),
+        payload: {
+          state: stateRaw,
+          reason,
+        },
+      };
+
+      lot.ledgerEvents.push(created);
+      lot.procurementAttempts.push({
+        attemptId: created.eventId,
+        lotId: lot.id,
+        attemptTimestamp: now,
+        reporter: user.email,
+        reporterRole: user.role,
+        centreId: String(payload.centreId || 'FCI-CENTRE-01'),
+        centreName: String(
+          payload.centreName || 'Khandwa Central Grain Mandi Centre'
+        ),
+        isCentreVerified: Boolean(payload.isCentreVerified ?? false),
+        outcome:
+          stateRaw === 'PLANNED' || stateRaw === 'VISITED'
+            ? 'PENDING'
+            : stateRaw,
+        outcomeReason: reason || 'Farmer reported procurement update',
+        documentReadiness: {
+          farmerIdPresented:
+            lot.readiness.find((r) => r.id === 'registration')?.ready ?? false,
+          landRecordReady:
+            lot.readiness.find((r) => r.id === 'produce')?.ready ?? false,
+          bankPassbookReady:
+            lot.readiness.find((r) => r.id === 'bank-details')?.ready ?? false,
+          allDocumentsReady: lot.readiness.every((r) => r.ready),
+        },
+      });
+      lot.updatedAt = now;
+      saveExtendedLot(lot);
+
+      res.status(201).json(created);
+    }
+  );
+
+  // V1-9: Record farmer-reported sale & payment status
       const lot = getOwnedLotOrError(req, res);
       if (!lot) return;
       const { summary, payload, source, verification } = req.body || {};
@@ -1847,6 +2540,111 @@ async function startServer() {
     '/api/v1/lots/:lotId/sales',
     requireUserV1,
     (req: Request, res: Response) => {
+      const user = (req as Request & { user: ServerUserRecord }).user;
+      const lot = getOwnedLotOrError(req, res);
+      if (!lot) return;
+
+      const body = req.body || {};
+      const payload = body.payload || {};
+      const quantityQtl = Number(
+        payload.quantityQtl ?? body.quantityQtl ?? lot.quantityQuintals
+      );
+      const agreedPricePerQtl = Number(
+        payload.agreedPricePerQtl ?? body.agreedPricePerQtl ?? 2350
+      );
+      const deductions = Number(payload.deductions ?? body.deductions ?? 4000);
+      const actualNet =
+        typeof payload.actualNet === 'number'
+          ? payload.actualNet
+          : Math.round(quantityQtl * agreedPricePerQtl) - deductions;
+      const paymentStatus = String(
+        payload.paymentStatus || body.paymentStatus || 'PENDING'
+      );
+      const estimatedNet =
+        lot.latestEstimate?.options.directBuyer.netReturn ?? 113500;
+      const differenceFromEstimate =
+        typeof payload.differenceFromEstimate === 'number'
+          ? payload.differenceFromEstimate
+          : actualNet - estimatedNet;
+
+      const now = new Date().toISOString();
+      const created: CropLedgerEvent = {
+        eventId: `sal-${Date.now()}-${lot.ledgerEvents.length}`,
+        lotId: lot.id,
+        type: 'SALE',
+        occurredAt: now,
+        source:
+          body.source === 'VERIFIED' ||
+          body.source === 'ESTIMATED' ||
+          body.source === 'CACHED' ||
+          body.source === 'MANUAL' ||
+          body.source === 'DEMO'
+            ? body.source
+            : 'MANUAL',
+        verification: String(body.verification || 'FARMER_REPORTED'),
+        summary: String(
+          body.summary ||
+            `Sale reported: ${quantityQtl} qtl at ₹${agreedPricePerQtl}/qtl; actual net ₹${actualNet}.`
+        ),
+        payload: {
+          quantityQtl,
+          agreedPricePerQtl,
+          deductions,
+          actualNet,
+          paymentStatus,
+          differenceFromEstimate,
+        },
+      };
+
+      lot.ledgerEvents.push(created);
+      lot.saleRecord = {
+        saleId: created.eventId,
+        lotId: lot.id,
+        buyerName: String(payload.buyerName || 'Direct Institutional Buyer'),
+        buyerType: 'INSTITUTIONAL_BUYER',
+        acceptedQuantityQuintals: quantityQtl,
+        actualPricePerQuintal: agreedPricePerQtl,
+        actualGrossAmount: Math.round(quantityQtl * agreedPricePerQtl),
+        actualDeductions: {
+          transport: deductions,
+          loading: 0,
+          handling: 0,
+          fees: 0,
+          discrepancyDeduction: 0,
+          totalDeductions: deductions,
+        },
+        actualNetAmount: actualNet,
+        paymentStatus:
+          paymentStatus === 'PAID'
+            ? 'FULLY_SETTLED'
+            : paymentStatus === 'DISPUTED'
+              ? 'PAYMENT_FAILED'
+              : 'AWAITING_PAYMENT',
+        settledAt: now,
+        estimatedVsActualGap: {
+          estimatedNet,
+          actualNet,
+          variance: differenceFromEstimate,
+        },
+      };
+      lot.updatedAt = now;
+      lot.historyEvents.push({
+        eventId: created.eventId,
+        timestamp: now,
+        actor: user.email,
+        actorRole: user.role,
+        eventType: 'SALE_RECORDED',
+        summary: created.summary,
+        isVerified: false,
+        details: created.payload,
+      });
+
+      saveExtendedLot(lot);
+      res.status(201).json(created);
+    }
+  );
+
+  // V1-10: Submit leaf screening with >10MB rejection & zero pesticide prescription
       const lot = getOwnedLotOrError(req, res);
       if (!lot) return;
 
@@ -1877,10 +2675,12 @@ async function startServer() {
     '/api/v1/lots/:lotId/screenings',
     requireUserV1,
     (req: Request, res: Response) => {
+      const user = (req as Request & { user: ServerUserRecord }).user;
       const lot = getOwnedLotOrError(req, res);
       if (!lot) return;
 
       const { imageFormat, imageSizeBytes, cropDeclared } = req.body || {};
+      const result = CropToCashService.screenCropImage({
       const screeningResult = CropToCashService.screenCropImage({
         lotId: lot.id,
         imageFormat: imageFormat || 'jpeg',
@@ -1888,6 +2688,35 @@ async function startServer() {
         cropDeclared: cropDeclared || lot.cropName,
       });
 
+      if (result.outcomeCategory === 'IMAGE_QUALITY_REJECTED') {
+        sendV1Error(
+          res,
+          422,
+          'IMAGE_QUALITY_REJECTED',
+          result.abstentionReason || 'Image quality or size rejected.',
+          false
+        );
+        return;
+      }
+
+      lot.screeningResults.push(result);
+      lot.updatedAt = new Date().toISOString();
+      lot.historyEvents.push({
+        eventId: result.screeningId,
+        timestamp: lot.updatedAt,
+        actor: user.email,
+        actorRole: user.role,
+        eventType: 'SCREENING_PERFORMED',
+        summary: `Crop screening performed: ${result.outcomeCategory}`,
+        isVerified: false,
+        details: {
+          outcomeCategory: result.outcomeCategory,
+          isMockOrDemo: result.isMockOrDemo,
+        },
+      });
+      saveExtendedLot(lot);
+
+      res.status(201).json(result);
       lot.screeningResults = lot.screeningResults || [];
       lot.screeningResults.push(screeningResult);
       lot.updatedAt = new Date().toISOString();
@@ -2073,147 +2902,141 @@ async function startServer() {
   });
 
   // 9. Admin: Change User Role
-  app.post(
-    '/api/admin/users/:userId/role',
-    requireAdmin,
-    (req: Request, res: Response) => {
-      const adminUser = (req as Request & { adminUser: ServerUserRecord })
-        .adminUser;
-      const { userId } = req.params;
-      const { role, reason } = req.body || {};
+  const handleAdminRoleChange = (req: Request, res: Response) => {
+    const adminUser = (req as Request & { adminUser: ServerUserRecord })
+      .adminUser;
+    const { userId } = req.params;
+    const { role, reason } = req.body || {};
 
-      if (!reason || String(reason).trim().length < 5) {
-        res.status(400).json({
-          error:
-            'A documented audit reason (min 5 characters) is required for role changes.',
-        });
-        return;
-      }
-
-      const validRoles: ServerUserRole[] = ['farmer', 'agent', 'buyer', 'admin'];
-      if (!validRoles.includes(role)) {
-        res.status(400).json({ error: 'Invalid role specified.' });
-        return;
-      }
-
-      const targetUser = Array.from(usersMap.values()).find(
-        (u) => u.id === userId
-      );
-      if (!targetUser) {
-        res.status(404).json({ error: 'User record not found.' });
-        return;
-      }
-
-      const prevRole = targetUser.role;
-      targetUser.role = role;
-
-      recordAudit(
-        adminUser.email,
-        adminUser.role,
-        'ROLE_CHANGE_APPROVED',
-        `${targetUser.email} (${prevRole} -> ${role})`,
-        String(reason).trim(),
-        'SUCCESS'
-      );
-
-      res.json({
-        user: sanitizeUser(targetUser),
-        auditLogs,
+    if (!reason || String(reason).trim().length < 5) {
+      res.status(400).json({
+        error:
+          'A documented audit reason (min 5 characters) is required for role changes.',
       });
+      return;
     }
-  );
+
+    const validRoles: ServerUserRole[] = ['farmer', 'agent', 'buyer', 'admin'];
+    if (!validRoles.includes(role)) {
+      res.status(400).json({ error: 'Invalid role specified.' });
+      return;
+    }
+
+    const targetUser = Array.from(usersMap.values()).find(
+      (u) => u.id === userId
+    );
+    if (!targetUser) {
+      res.status(404).json({ error: 'User record not found.' });
+      return;
+    }
+
+    const prevRole = targetUser.role;
+    targetUser.role = role;
+
+    recordAudit(
+      adminUser.email,
+      adminUser.role,
+      'ROLE_CHANGE_APPROVED',
+      `${targetUser.email} (${prevRole} -> ${role})`,
+      String(reason).trim(),
+      'SUCCESS'
+    );
+
+    res.json({
+      user: sanitizeUser(targetUser),
+      auditLogs,
+    });
+  };
+  app.post('/api/admin/users/:userId/role', requireAdmin, handleAdminRoleChange);
+  app.put('/api/admin/users/:userId/role', requireAdmin, handleAdminRoleChange);
 
   // 10. Admin: Activate / Deactivate User Account
-  app.post(
-    '/api/admin/users/:userId/status',
-    requireAdmin,
-    (req: Request, res: Response) => {
-      const adminUser = (req as Request & { adminUser: ServerUserRecord })
-        .adminUser;
-      const { userId } = req.params;
-      const { active, reason } = req.body || {};
+  const handleAdminUserStatus = (req: Request, res: Response) => {
+    const adminUser = (req as Request & { adminUser: ServerUserRecord })
+      .adminUser;
+    const { userId } = req.params;
+    const { active, reason } = req.body || {};
 
-      if (!reason || String(reason).trim().length < 5) {
-        res.status(400).json({
-          error:
-            'An audit reason is required to activate or deactivate an account.',
-        });
-        return;
-      }
-
-      const targetUser = Array.from(usersMap.values()).find(
-        (u) => u.id === userId
-      );
-      if (!targetUser) {
-        res.status(404).json({ error: 'User not found.' });
-        return;
-      }
-
-      if (targetUser.id === adminUser.id && !active) {
-        res.status(400).json({
-          error: 'You cannot deactivate your own active administrator account.',
-        });
-        return;
-      }
-
-      targetUser.active = Boolean(active);
-      recordAudit(
-        adminUser.email,
-        adminUser.role,
-        targetUser.active ? 'ACCOUNT_ACTIVATED' : 'ACCOUNT_DEACTIVATED',
-        targetUser.email,
-        String(reason).trim(),
-        targetUser.active ? 'SUCCESS' : 'WARNING'
-      );
-
-      res.json({
-        user: sanitizeUser(targetUser),
-        auditLogs,
+    if (!reason || String(reason).trim().length < 5) {
+      res.status(400).json({
+        error:
+          'An audit reason is required to activate or deactivate an account.',
       });
+      return;
     }
-  );
+
+    const targetUser = Array.from(usersMap.values()).find(
+      (u) => u.id === userId
+    );
+    if (!targetUser) {
+      res.status(404).json({ error: 'User not found.' });
+      return;
+    }
+
+    if (targetUser.id === adminUser.id && !active) {
+      res.status(400).json({
+        error: 'You cannot deactivate your own active administrator account.',
+      });
+      return;
+    }
+
+    targetUser.active = Boolean(active);
+    recordAudit(
+      adminUser.email,
+      adminUser.role,
+      targetUser.active ? 'ACCOUNT_ACTIVATED' : 'ACCOUNT_DEACTIVATED',
+      targetUser.email,
+      String(reason).trim(),
+      targetUser.active ? 'SUCCESS' : 'WARNING'
+    );
+
+    res.json({
+      user: sanitizeUser(targetUser),
+      auditLogs,
+    });
+  };
+  app.post('/api/admin/users/:userId/status', requireAdmin, handleAdminUserStatus);
+  app.put('/api/admin/users/:userId/status', requireAdmin, handleAdminUserStatus);
 
   // 11. Admin: Verification Review Approval / Rejection
-  app.post(
-    '/api/admin/lots/:lotId/verification',
-    requireAdmin,
-    (req: Request, res: Response) => {
-      const adminUser = (req as Request & { adminUser: ServerUserRecord })
-        .adminUser;
-      const { lotId } = req.params;
-      const { status, reason } = req.body || {};
+  const handleAdminLotVerification = (req: Request, res: Response) => {
+    const adminUser = (req as Request & { adminUser: ServerUserRecord })
+      .adminUser;
+    const { lotId } = req.params;
+    const { status, reason } = req.body || {};
 
-      if (!reason || String(reason).trim().length < 5) {
-        res.status(400).json({
-          error:
-            'A verifiable audit reason (minimum 5 characters) is mandatory before changing lot verification status.',
-        });
-        return;
-      }
-
-      serverLotStatusOverrides[lotId] = {
-        status: String(status),
-        updatedBy: adminUser.email,
-        reason: String(reason).trim(),
-        updatedAt: 'Just now',
-      };
-
-      recordAudit(
-        adminUser.email,
-        adminUser.role,
-        `LOT_VERIFICATION_${status}`,
-        `Lot ${lotId}`,
-        String(reason).trim(),
-        'SUCCESS'
-      );
-
-      res.json({
-        lotId,
-        override: serverLotStatusOverrides[lotId],
-        auditLogs,
+    if (!reason || String(reason).trim().length < 5) {
+      res.status(400).json({
+        error:
+          'A verifiable audit reason (minimum 5 characters) is mandatory before changing lot verification status.',
       });
+      return;
     }
-  );
+
+    serverLotStatusOverrides[lotId] = {
+      status: String(status),
+      updatedBy: adminUser.email,
+      reason: String(reason).trim(),
+      updatedAt: 'Just now',
+    };
+
+    recordAudit(
+      adminUser.email,
+      adminUser.role,
+      `LOT_VERIFICATION_${status}`,
+      `Lot ${lotId}`,
+      String(reason).trim(),
+      'SUCCESS'
+    );
+
+    res.json({
+      lotId,
+      override: serverLotStatusOverrides[lotId],
+      auditLogs,
+    });
+  };
+  app.post('/api/admin/lots/:lotId/verification', requireAdmin, handleAdminLotVerification);
+  app.put('/api/admin/lots/:lotId/verification', requireAdmin, handleAdminLotVerification);
 
   // Vite middleware in development, static dist in production
   if (process.env.NODE_ENV !== 'production') {

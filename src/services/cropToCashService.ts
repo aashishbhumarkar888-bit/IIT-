@@ -160,6 +160,7 @@ export interface CropPassportHistoryEvent {
   actorRole: string;
   eventType:
     | 'LOT_CREATED'
+    | 'LOT_UPDATED'
     | 'SCREENING_PERFORMED'
     | 'ESTIMATE_GENERATED'
     | 'PROCUREMENT_ATTEMPT'
@@ -170,6 +171,27 @@ export interface CropPassportHistoryEvent {
   isVerified: boolean;
   details: Record<string, unknown>;
 }
+
+export const DEFAULT_CROP_READINESS: CropReadinessItem[] = [
+  {
+    id: 'bank-details',
+    labelEn: 'Bank details ready (readiness only)',
+    labelHi: 'बैंक विवरण तैयार (केवल तैयारी)',
+    ready: false,
+  },
+  {
+    id: 'registration',
+    labelEn: 'Farmer registration details ready',
+    labelHi: 'किसान पंजीकरण विवरण तैयार',
+    ready: false,
+  },
+  {
+    id: 'produce',
+    labelEn: 'Produce quantity and grade noted',
+    labelHi: 'फसल की मात्रा और ग्रेड दर्ज',
+    ready: false,
+  },
+];
 
 export interface ExtendedCropLotRecord {
   id: string;
@@ -188,6 +210,9 @@ export interface ExtendedCropLotRecord {
   procurementAttempts: ProcurementAttempt[];
   saleRecord?: SaleRecord;
   historyEvents: CropPassportHistoryEvent[];
+  readiness: CropReadinessItem[];
+  procurementState: ProcurementState;
+  ledgerEvents: CropLedgerEvent[];
   readiness?: {
     registration?: boolean;
     bankAccount?: boolean;
@@ -441,9 +466,108 @@ export class CropToCashService {
   }
 }
 
-// In-Memory storage of Extended Crop Lots keyed by lot ID
-const extendedCropLots = new Map<string, ExtendedCropLotRecord>();
+// Durable File-backed and in-memory storage of Extended Crop Lots keyed by lot ID
+import fs from 'node:fs';
+import path from 'node:path';
 
+const extendedCropLots = new Map<string, ExtendedCropLotRecord>();
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DATA_FILE = path.join(DATA_DIR, 'extended_lots.json');
+
+function persistExtendedLotsToDisk(): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const serialized = JSON.stringify(Array.from(extendedCropLots.values()), null, 2);
+    fs.writeFileSync(DATA_FILE, serialized, 'utf-8');
+  } catch (err) {
+    // Graceful fallback for non-writable environments
+    console.warn('[cropToCashService] Persistence to disk skipped:', err);
+  }
+}
+
+function loadExtendedLotsFromDisk(): void {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        for (const lot of list) {
+          if (lot && typeof lot.id === 'string') {
+            extendedCropLots.set(lot.id, lot);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[cropToCashService] Failed loading persisted lots from disk:', err);
+  }
+}
+
+function seedDefaultDemoLot(
+  id: string,
+  cropName: string,
+  variety: string,
+  quantityQuintals: number
+): void {
+  if (extendedCropLots.has(id)) return;
+  const now = '2026-10-18T00:00:00.000Z';
+  extendedCropLots.set(id, {
+    id,
+    ownerEmail: 'farmer@kisanspo.in',
+    ownerId: 'USR-FARMER-01',
+    farmerName: 'Rameshwar Patidar (Demo Farmer)',
+    cropName,
+    variety,
+    grade: 'FAQ Grade A',
+    quantityQuintals,
+    harvestDate: 'Oct 2026',
+    surveyNumber: 'Survey #104/2, Khandwa',
+    plotAreaHectares: 4.0,
+    screeningResults: [],
+    procurementAttempts: [],
+    historyEvents: [
+      {
+        eventId: `EV-SEED-${id}`,
+        timestamp: now,
+        actor: 'farmer@kisanspo.in',
+        actorRole: 'farmer',
+        eventType: 'LOT_CREATED',
+        summary: `Seeded default demo crop lot ${id} (${cropName}).`,
+        isVerified: true,
+        details: { cropName, quantityQuintals },
+      },
+    ],
+    readiness: DEFAULT_CROP_READINESS.map((item) => ({ ...item })),
+    procurementState: 'PLANNED',
+    ledgerEvents: [
+      {
+        eventId: `ev-init-${id}`,
+        lotId: id,
+        type: 'READINESS',
+        occurredAt: now,
+        source: 'DEMO',
+        verification: 'SEEDED_DEMO_LOT',
+        summary: `Crop-to-cash ledger initialized for ${cropName} (${id}).`,
+        payload: { initialized: true },
+      },
+    ],
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+// Initialize on boot: load from disk, ensure demo lots seeded, then persist
+loadExtendedLotsFromDisk();
+seedDefaultDemoLot('KS-MP-2025-089', 'Sharbati Wheat', 'HI-1544 Sharbati', 50);
+seedDefaultDemoLot('KS-MP-2025-094', 'Soybean', 'JS-2034 High Oil', 42);
+seedDefaultDemoLot('KS-MH-2025-210', 'Medium Staple Cotton', 'Bt-Hybrid H4', 35);
+persistExtendedLotsToDisk();
+
+export function getExtendedLot(
+  lotId: string
+): ExtendedCropLotRecord | undefined {
 const defaultDemoLot: ExtendedCropLotRecord = {
   id: 'KS-MP-2025-089',
   ownerEmail: 'ramesh.patel@kisan-spo.in',
@@ -501,8 +625,17 @@ export function getExtendedLot(lotId: string): ExtendedCropLotRecord | undefined
 
 export function saveExtendedLot(lot: ExtendedCropLotRecord): void {
   extendedCropLots.set(lot.id, lot);
+  persistExtendedLotsToDisk();
 }
 
 export function getAllExtendedLots(): ExtendedCropLotRecord[] {
   return Array.from(extendedCropLots.values());
+}
+
+export function deleteExtendedLot(lotId: string): boolean {
+  const existed = extendedCropLots.delete(lotId);
+  if (existed) {
+    persistExtendedLotsToDisk();
+  }
+  return existed;
 }

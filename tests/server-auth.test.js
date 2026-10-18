@@ -73,6 +73,29 @@ test('registration creates a session that can be restored and used for crop crea
   assert.equal(cropData.personalLots.length, 1);
 });
 
+test('invalid tokens are rejected by session restore and protected API routes', async () => {
+  assert.ok(token, 'registration test must create a session first');
+  const [claims, signature] = token.split('.');
+  const changedFirstDigit = signature[0] === '0' ? '1' : '0';
+  const invalidToken = `${claims}.${changedFirstDigit}${signature.slice(1)}`;
+
+  const invalidSession = await fetch(`${baseUrl}/api/auth/session`, {
+    headers: { Authorization: `Bearer ${invalidToken}` },
+  });
+  assert.equal(invalidSession.status, 401);
+  assert.equal((await invalidSession.json()).authenticated, false);
+
+  const protectedLots = await fetch(`${baseUrl}/api/v1/lots`, {
+    headers: { Authorization: `Bearer ${invalidToken}` },
+  });
+  assert.equal(protectedLots.status, 401);
+
+  const validSession = await fetch(`${baseUrl}/api/auth/session`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  assert.equal(validSession.status, 200);
+});
+
 test('logout clears the client session while copied tokens remain valid only until expiry', async () => {
   assert.ok(token, 'registration test must create a session first');
   const logout = await fetch(`${baseUrl}/api/auth/logout`, {

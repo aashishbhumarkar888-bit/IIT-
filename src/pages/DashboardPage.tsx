@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { PersonalizedDashboard } from '../components/PersonalizedDashboard';
 import { AppRoute, useKisan } from '../context/KisanContext';
 import {
   BUYER_OFFERS,
@@ -289,6 +290,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     updateArbitrageInput,
     payment,
     showToast,
+    workspaceViewMode,
+    setWorkspaceViewMode,
+    user,
   } = useKisan();
 
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -300,6 +304,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [acceptedBidIds, setAcceptedBidIds] = useState<Record<string, boolean>>(
     {}
   );
+
+  // Default to the calm, personalized dashboard unless inside the compact Showcase or explicitly toggled to Operations Desk
+  if (!compactMode && workspaceViewMode === 'PERSONAL') {
+    return <PersonalizedDashboard />;
+  }
 
   const activeModules = ROLE_MODULES[role];
 
@@ -394,6 +403,31 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           compactMode ? 'p-3' : 'max-w-[1536px] px-4 sm:px-6 py-4'
         }`}
       >
+        {!compactMode && (
+          <div className="mb-4 p-3.5 rounded-xl bg-[#E8EAF6] border-2 border-[#000080] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-black">
+              <strong className="font-extrabold text-[#000080] block">
+                Organizational Operations Desk Mode (Sample Cluster Data)
+              </strong>
+              <span className="font-medium">
+                {user?.isDemoAccount
+                  ? `Exploring full Khandwa cluster demonstration telemetry as ${user.name} (Demo Farmer).`
+                  : 'Viewing illustrative cluster-wide procurement, pooling, and escrow workflows. Switch back anytime to view only your private personal workspace.'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setWorkspaceViewMode('PERSONAL')}
+              className="min-h-[40px] px-4 py-2 rounded-lg bg-[#138808] hover:bg-[#006B3C] text-white text-xs font-extrabold shrink-0 flex items-center gap-1.5 shadow-sm"
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                person
+              </span>
+              <span>← Return to Personal Workspace</span>
+            </button>
+          </div>
+        )}
+
         {/* Operational Context Bar & Three-Role Switcher */}
         <div className="flex flex-col gap-4 bg-white pb-4 border-b border-[#000080]/15">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">

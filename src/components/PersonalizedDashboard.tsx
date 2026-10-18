@@ -1,65 +1,69 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AppRoute, useKisan } from '../context/KisanContext';
 import { CROP_LOTS } from '../data/kisanData';
-import { formatINR } from '../services/kisanService';
-import { CropLot, UserRole } from '../types/kisan';
+import { useAuth } from '../hooks/useAuth';
+import { UserRole } from '../types/kisan';
+import { AnimatedNumber } from './AnimatedNumber';
 import { QRCodeComponent } from './QRCodeComponent';
 
-export const DemoAccountBadge: React.FC<{ className?: string }> = ({
-  className = '',
-}) => (
+export const DemoAccountBadge: React.FC = () => (
   <span
-    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded bg-[#FFDCC2] text-[#371A00] border border-[#FF9933] text-[10px] font-extrabold uppercase tracking-wider ${className}`}
+    aria-label="Demo Account"
+    className="px-2.5 py-0.5 rounded-md bg-[#FF9933] text-black text-[10px] font-extrabold uppercase tracking-wider border border-black inline-flex items-center gap-1"
   >
     <span className="material-symbols-outlined text-[13px]">science</span>
-    <span>Demo Account • Sample Data</span>
+    <span>Demo Account</span>
   </span>
 );
 
 export const DemoDataBanner: React.FC = () => {
-  const { user, resetDemoDataset, setWorkspaceViewMode, workspaceViewMode } =
-    useKisan();
+  const { user, resetDemoDataset, navigate } = useKisan();
 
   if (!user?.isDemoAccount) return null;
 
   return (
-    <div className="p-3.5 rounded-xl bg-[#FFDCC2] border-2 border-[#FF9933] text-black flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <div className="flex items-start gap-2.5">
-        <span className="material-symbols-outlined text-[#371A00] text-[20px] shrink-0 mt-0.5">
-          info
+    <div
+      role="region"
+      aria-label="Demo Workspace Mode Notice"
+      className="bg-[#FFDCC2] border-2 border-[#FF9933] rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm"
+    >
+      <div className="flex items-start sm:items-center gap-2.5">
+        <span className="material-symbols-outlined text-[#371A00] text-[22px] shrink-0">
+          science
         </span>
-        <div className="text-xs">
-          <strong className="font-extrabold text-[#371A00] block">
-            Demo Profile Active ({user.name} • {user.demoDatasetVersion || 'v2.4-demo'})
-          </strong>
-          <span className="font-medium">
-            All crop lots, plot boundaries, buyer bids, weighbridge slips, and
-            50-50 escrow states in this account are isolated demonstration
-            sample data — not live market or banking transactions.
-          </span>
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-extrabold text-[#371A00] uppercase tracking-wider">
+              Sample Agricultural Dataset Active
+            </span>
+            <DemoAccountBadge />
+          </div>
+          <p className="text-xs text-[#371A00] font-semibold mt-0.5">
+            You are exploring Kisan-SPO with preloaded sample crop lots (Sharbati
+            Wheat, JS-2034 Soybean, Cotton). Personal accounts start with a clean
+            workspace.
+          </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 shrink-0">
-        <button
-          type="button"
-          onClick={() =>
-            setWorkspaceViewMode(
-              workspaceViewMode === 'PERSONAL' ? 'OPERATIONS_DESK' : 'PERSONAL'
-            )
-          }
-          className="px-3 py-1.5 rounded-lg bg-[#000080] hover:bg-[#00003C] text-white text-xs font-extrabold min-h-[36px]"
-        >
-          {workspaceViewMode === 'PERSONAL'
-            ? 'Open Full Operations Desk'
-            : 'Back to Personal Summary'}
-        </button>
+      <div className="flex flex-wrap items-center gap-2 shrink-0">
         <button
           type="button"
           onClick={resetDemoDataset}
-          className="px-3 py-1.5 rounded-lg bg-white hover:bg-[#E8EAF6] text-[#000080] border border-[#000080] text-xs font-extrabold min-h-[36px]"
+          className="min-h-[38px] px-3 py-1.5 rounded-lg bg-white hover:bg-[#E8EAF6] text-[#000080] border border-[#000080] text-xs font-extrabold flex items-center gap-1 transition-colors"
         >
-          Reset Demo Data
+          <span className="material-symbols-outlined text-[15px]">
+            restart_alt
+          </span>
+          <span>Reset Demo Dataset</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/profile')}
+          className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#000080] hover:bg-[#00003C] text-white text-xs font-extrabold flex items-center gap-1 transition-colors"
+        >
+          <span className="material-symbols-outlined text-[15px]">person</span>
+          <span>Switch Role / Profile</span>
         </button>
       </div>
     </div>
@@ -70,22 +74,13 @@ export const WelcomeHeader: React.FC = () => {
   const {
     user,
     role,
+    language,
     navigate,
+    setAddCropModalOpen,
     personalLots,
-    workspaceViewMode,
-    setWorkspaceViewMode,
   } = useKisan();
 
-  const isBrandNewUser =
-    !user?.isDemoAccount &&
-    (user?.onboardingStatus !== 'COMPLETED' || personalLots.length === 0);
-
-  const timeGreeting = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  }, []);
+  if (!user) return null;
 
   const roleLabels: Record<UserRole, { en: string; hi: string }> = {
     farmer: {
@@ -102,154 +97,237 @@ export const WelcomeHeader: React.FC = () => {
     },
   };
 
-  const displayName = user?.name?.trim();
-  const hasLocation = Boolean(
-    user?.village || user?.district || user?.state
+  const activeRoleBadge =
+    user.role === 'admin'
+      ? language === 'hi'
+        ? 'प्रशासक (Admin)'
+        : 'Admin'
+      : language === 'hi'
+        ? roleLabels[role].hi
+        : roleLabels[role].en;
+
+  const locationParts = [user.village, user.district, user.state].filter(
+    Boolean
   );
-  const locationText = hasLocation
-    ? [user?.village, user?.district, user?.state].filter(Boolean).join(', ')
-    : '';
+  const locationSummary =
+    locationParts.length > 0 ? locationParts.join(', ') : null;
+
+  const completionPct = user.profileCompletion ?? 85;
+  const greetingName = user.name?.trim();
+
+  const quickActions: {
+    label: string;
+    icon: string;
+    onClick: () => void;
+    primary?: boolean;
+  }[] =
+    role === 'farmer'
+      ? [
+          {
+            label:
+              personalLots.length === 0 && !user.isDemoAccount
+                ? 'Add My First Crop'
+                : 'Add Crop Lot',
+            icon: 'add_circle',
+            onClick: () => setAddCropModalOpen(true),
+            primary: true,
+          },
+          {
+            label: 'Check Crop Advisory',
+            icon: 'Sprinkler',
+            onClick: () => navigate('/advisory'),
+          },
+          {
+            label: 'View Crop Passport',
+            icon: 'qr_code_2',
+            onClick: () => navigate('/crop-passport'),
+          },
+          {
+            label: 'Compare Buyer Offers',
+            icon: 'currency_rupee',
+            onClick: () => navigate('/market-comparison'),
+          },
+        ]
+      : role === 'agent'
+        ? [
+            {
+              label: 'Explore Pickup Scheduling',
+              icon: 'local_shipping',
+              onClick: () => navigate('/harvest-payments'),
+              primary: true,
+            },
+            {
+              label: 'Add Farmer Crop Lot',
+              icon: 'person_add',
+              onClick: () => setAddCropModalOpen(true),
+            },
+            {
+              label: 'Verify Crop Passports',
+              icon: 'verified',
+              onClick: () => navigate('/crop-passport'),
+            },
+            {
+              label: 'Compare Mandi Spreads',
+              icon: 'trending_up',
+              onClick: () => navigate('/market-comparison'),
+            },
+          ]
+        : [
+            {
+              label: 'Browse Available Crop Lots',
+              icon: 'inventory_2',
+              onClick: () => navigate('/crop-passport'),
+              primary: true,
+            },
+            {
+              label: 'Evaluate Price Arbitrage',
+              icon: 'analytics',
+              onClick: () => navigate('/market-comparison'),
+            },
+            {
+              label: 'Inspect Escrow & Logistics',
+              icon: 'fact_check',
+              onClick: () => navigate('/harvest-payments'),
+            },
+            {
+              label: 'Regional Crop Health',
+              icon: 'eco',
+              onClick: () => navigate('/advisory'),
+            },
+          ];
 
   return (
-    <div className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="px-2.5 py-0.5 rounded bg-[#E8F5E9] text-[#006B3C] border border-[#138808]/40 text-[11px] font-extrabold">
-            {roleLabels[role].en}
-          </span>
-          <span className="text-xs font-bold text-[#006B3C] font-hindi">
-            {roleLabels[role].hi}
-          </span>
-          {user?.isDemoAccount && <DemoAccountBadge />}
-        </div>
-
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-[#000080] tracking-tight">
-          {isBrandNewUser
-            ? displayName
-              ? `Welcome to Kisan-SPO, ${displayName}`
-              : 'Welcome to Kisan-SPO'
-            : displayName
-            ? `${timeGreeting}, ${displayName}`
-            : 'Welcome back to Kisan-SPO'}
-        </h1>
-
-        <p className="text-xs sm:text-sm text-black font-semibold max-w-2xl leading-relaxed">
-          {isBrandNewUser
-            ? 'Your crops, market opportunities, procurement activity, and payments will appear here as you begin using Kisan-SPO.'
-            : 'Your personal agricultural workspace is ready. Review your saved crops, compare net payouts, or continue your active workflows below.'}
-        </p>
-
-        {locationText && (
-          <div className="flex items-center gap-1.5 text-xs font-bold text-[#000080] pt-0.5">
-            <span className="material-symbols-outlined text-[16px] text-[#138808]">
-              location_on
+    <section
+      aria-label="Personal Welcome Header"
+      className="bg-white rounded-2xl border-2 border-[#000080] p-5 sm:p-6 shadow-sm space-y-5"
+    >
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="px-2.5 py-1 rounded-md bg-[#E8EAF6] text-[#000080] text-xs font-extrabold uppercase tracking-wider border border-[#000080]/30">
+              {activeRoleBadge}
             </span>
-            <span>Operating Region: {locationText}</span>
+            <span className="px-2.5 py-1 rounded-md bg-[#E8F5E9] text-[#006B3C] text-xs font-extrabold border border-[#138808]/30">
+              {language === 'hi' ? 'हिंदी (HI)' : 'English (EN)'}
+            </span>
+            {user.isDemoAccount && <DemoAccountBadge />}
+            {user.emailVerified && (
+              <span className="px-2 py-0.5 rounded bg-[#E8F5E9] text-[#138808] text-[11px] font-extrabold inline-flex items-center gap-1">
+                <span className="material-symbols-outlined text-[13px]">
+                  verified
+                </span>
+                <span>Verified</span>
+              </span>
+            )}
           </div>
-        )}
-      </div>
 
-      <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-        {user?.onboardingStatus !== 'COMPLETED' ? (
-          <button
-            type="button"
-            onClick={() => navigate('/onboarding')}
-            className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[#138808] hover:bg-[#006B3C] text-white text-xs font-extrabold flex items-center gap-1.5 shadow-sm anim-btn-press"
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              person_check
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#000080] tracking-tight">
+            {greetingName
+              ? language === 'hi'
+                ? `नमस्ते, ${greetingName}`
+                : `Welcome, ${greetingName}`
+              : language === 'hi'
+                ? 'किसान-एसपीओ में आपका स्वागत है'
+                : 'Welcome to Kisan-SPO'}
+          </h1>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-black font-semibold">
+            {locationSummary ? (
+              <span className="inline-flex items-center gap-1">
+                <span className="material-symbols-outlined text-[16px] text-[#138808]">
+                  location_on
+                </span>
+                <span>{locationSummary}</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => navigate('/profile')}
+                className="inline-flex items-center gap-1 text-[#000080] underline font-extrabold hover:text-[#138808]"
+              >
+                <span className="material-symbols-outlined text-[16px]">
+                  add_location_alt
+                </span>
+                <span>Add your village &amp; district in Profile</span>
+              </button>
+            )}
+
+            <span className="inline-flex items-center gap-1 text-[#006B3C]">
+              <span className="material-symbols-outlined text-[16px]">
+                mail
+              </span>
+              <span>{user.email}</span>
             </span>
-            <span>Set Up My Profile</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => navigate('/profile')}
-            className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[#E8EAF6] hover:bg-[#000080] hover:text-white text-[#000080] border border-[#000080]/30 text-xs font-extrabold flex items-center gap-1.5 transition-colors"
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              manage_accounts
-            </span>
-            <span>My Profile</span>
-          </button>
-        )}
-
-        <button
-          type="button"
-          onClick={() =>
-            setWorkspaceViewMode(
-              workspaceViewMode === 'PERSONAL' ? 'OPERATIONS_DESK' : 'PERSONAL'
-            )
-          }
-          className="min-h-[44px] px-4 py-2.5 rounded-xl bg-white hover:bg-[#E8EAF6] text-[#000080] border-2 border-[#000080] text-xs font-extrabold flex items-center gap-1.5 transition-colors"
-        >
-          <span className="material-symbols-outlined text-[18px]">
-            dashboard_customize
-          </span>
-          <span>
-            {workspaceViewMode === 'PERSONAL'
-              ? 'Explore Platform Desk'
-              : 'Personal Workspace'}
-          </span>
-        </button>
-      </div>
-    </div>
-  );
-};
-
-export const ContinueSetupCard: React.FC = () => {
-  const { user, navigate } = useKisan();
-
-  if (!user) return null;
-  const isComplete =
-    user.onboardingStatus === 'COMPLETED' &&
-    (user.profileCompletion ?? 100) >= 90;
-
-  if (isComplete) return null;
-
-  const completedSteps = Math.max(
-    1,
-    Math.min(4, user.onboardingStep || 2)
-  );
-  const pct = user.profileCompletion || Math.round((completedSteps / 4) * 100);
-
-  return (
-    <div className="bg-[#E8EAF6] rounded-xl border-2 border-[#000080]/30 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <div className="space-y-1 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-extrabold uppercase tracking-wider text-[#000080]">
-            Your Workspace Setup
-          </span>
-          <span className="px-2 py-0.5 rounded bg-white text-[#000080] text-[11px] font-extrabold font-tabular border border-[#000080]/20">
-            {completedSteps} of 4 steps completed ({pct}%)
-          </span>
+          </div>
         </div>
-        <p className="text-xs text-black font-semibold">
-          Complete your profile and location details to tailor local Mandi
-          comparisons and crop recommendations.
-        </p>
+
+        {/* Profile Completion Status Indicator */}
+        <div className="bg-[#FAF9F6] rounded-xl border border-[#000080]/20 p-3.5 sm:min-w-[230px] flex flex-col justify-between gap-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-extrabold text-[#000080] uppercase tracking-wider">
+              Profile Completion
+            </span>
+            <span className="text-xs font-extrabold font-tabular text-[#138808]">
+              {completionPct}%
+            </span>
+          </div>
+          <div className="w-full h-2 rounded-full bg-[#E8EAF6] overflow-hidden">
+            <div
+              className="h-full bg-[#138808] transition-all duration-300"
+              style={{ width: `${Math.min(100, Math.max(20, completionPct))}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-black font-medium">
+              {completionPct >= 100
+                ? 'Workspace fully configured'
+                : 'Add location for local Mandi rates'}
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate('/profile')}
+              className="font-extrabold text-[#000080] hover:underline"
+            >
+              Edit
+            </button>
+          </div>
+        </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => navigate('/onboarding')}
-        className="min-h-[40px] px-4 py-2 rounded-lg bg-[#000080] hover:bg-[#00003C] text-white text-xs font-extrabold shrink-0 flex items-center gap-1.5 anim-btn-press"
-      >
-        <span>Continue setup</span>
-        <span className="material-symbols-outlined text-[16px]">
-          arrow_forward
-        </span>
-      </button>
-    </div>
+      {/* Concise 4 Primary Workflow Actions */}
+      <div className="pt-2 border-t border-[#000080]/15 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+        {quickActions.map((act) => (
+          <button
+            key={act.label}
+            type="button"
+            onClick={act.onClick}
+            className={`min-h-[46px] px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center justify-between gap-2 transition-all anim-btn-press ${
+              act.primary
+                ? 'bg-[#138808] hover:bg-[#006B3C] text-white shadow-sm'
+                : 'bg-[#E8EAF6]/75 hover:bg-[#000080] text-[#000080] hover:text-white border border-[#000080]/25'
+            }`}
+          >
+            <span className="flex items-center gap-2 truncate">
+              <span className="material-symbols-outlined text-[18px]">
+                {act.icon}
+              </span>
+              <span className="truncate">{act.label}</span>
+            </span>
+            <span className="material-symbols-outlined text-[16px] shrink-0">
+              arrow_forward
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 };
 
 export const FirstCropCard: React.FC = () => {
-  const { role, navigate, setAddCropModalOpen, personalLots, user } =
+  const { role, setAddCropModalOpen, navigate, personalLots, user } =
     useKisan();
 
-  const hasPersonalCrops =
-    personalLots.length > 0 || Boolean(user?.isDemoAccount);
+  const hasPersonalCrops = personalLots.length > 0 || Boolean(user?.isDemoAccount);
 
   if (role === 'farmer') {
     return (
@@ -261,12 +339,12 @@ export const FirstCropCard: React.FC = () => {
           <h2 className="text-xl font-extrabold">
             {hasPersonalCrops
               ? 'Register another crop lot or check net realization'
-              : 'Add your first crop'}
+              : 'Add My First Crop'}
           </h2>
           <p className="text-xs text-white/90 font-medium max-w-xl leading-relaxed">
             {hasPersonalCrops
               ? 'Generate a scannable Digital Crop Passport QR code or compare local Mandi deductions against direct institutional buyer offers.'
-              : 'Start by adding a crop lot (such as Wheat, Soybean, or Cotton) to create your Digital Crop Passport and compare net take-home payouts.'}
+              : 'Start by adding a crop lot (such as Wheat, Soybean, Cotton, or Chana) to create your Digital Crop Passport and compare net take-home payouts.'}
           </p>
         </div>
 
@@ -290,7 +368,7 @@ export const FirstCropCard: React.FC = () => {
               add_circle
             </span>
             <span>
-              {hasPersonalCrops ? 'Add Another Crop Lot' : 'Add your first crop'}
+              {hasPersonalCrops ? 'Add Another Crop Lot' : 'Add My First Crop'}
             </span>
           </button>
         </div>
@@ -305,7 +383,7 @@ export const FirstCropCard: React.FC = () => {
           <span className="px-2.5 py-0.5 rounded bg-[#138808] text-white text-[10px] font-extrabold uppercase tracking-wider inline-block">
             VILLAGE AGENT PRIORITY
           </span>
-          <h2 className="text-xl font-extrabold">Set up your first pickup</h2>
+          <h2 className="text-xl font-extrabold">Explore Pickup Scheduling</h2>
           <p className="text-xs text-white/90 font-medium max-w-xl leading-relaxed">
             Coordinate farmer onboarding, village cluster pooling, and digital
             weighbridge gate-pass verification.
@@ -321,7 +399,7 @@ export const FirstCropCard: React.FC = () => {
             <span className="material-symbols-outlined text-[20px]">
               local_shipping
             </span>
-            <span>Set up your first pickup</span>
+            <span>Explore Pickup Scheduling</span>
           </button>
         </div>
       </div>
@@ -334,7 +412,7 @@ export const FirstCropCard: React.FC = () => {
         <span className="px-2.5 py-0.5 rounded bg-[#138808] text-white text-[10px] font-extrabold uppercase tracking-wider inline-block">
           INSTITUTIONAL BUYER PRIORITY
         </span>
-        <h2 className="text-xl font-extrabold">Explore available crop lots</h2>
+        <h2 className="text-xl font-extrabold">Browse Available Crop Lots</h2>
         <p className="text-xs text-white/90 font-medium max-w-xl leading-relaxed">
           Inspect Digital Crop Passports, review NABL residue-free evidence, and
           compare net-pocket procurement offers.
@@ -350,7 +428,7 @@ export const FirstCropCard: React.FC = () => {
           <span className="material-symbols-outlined text-[20px]">
             inventory_2
           </span>
-          <span>Explore available crop lots</span>
+          <span>Browse Available Crop Lots</span>
         </button>
       </div>
     </div>
@@ -509,6 +587,7 @@ export const AddCropModal: React.FC = () => {
                 if (val === 'Soybean') setVariety('JS-2034 High Oil');
                 if (val === 'Sharbati Wheat') setVariety('HI-1544 Sharbati');
                 if (val === 'Medium Staple Cotton') setVariety('Bt-Hybrid H4');
+                if (val === 'Chana (Gram)') setVariety('JG-11 Desi Chana');
               }}
               className="w-full h-11 px-3 rounded-lg bg-white text-black border-2 border-[#000080] text-sm font-extrabold"
             >
@@ -620,386 +699,1120 @@ export const PersonalizedDashboard: React.FC = () => {
     user,
     role,
     personalLots,
+    currentLot,
+    selectedLotId,
     setSelectedLotId,
-    navigate,
     setAddCropModalOpen,
     arbitrageResult,
-    updateArbitrageInput,
+    navigate,
   } = useKisan();
 
-  // Determine the user's own crops:
-  // - Real users see ONLY their own `personalLots` (0 for brand-new users!).
-  // - The dedicated Demo User (`isDemoAccount: true`) sees the isolated Demo Dataset (`CROP_LOTS`) clearly labeled as Demo.
-  const activeUserLots: CropLot[] = useMemo(() => {
-    if (user?.isDemoAccount) {
-      return [...personalLots, ...CROP_LOTS];
+  const isDemo = Boolean(user?.isDemoAccount);
+  const displayedLots = useMemo(() => {
+    if (isDemo && personalLots.length === 0) {
+      return CROP_LOTS;
     }
     return personalLots;
-  }, [user, personalLots]);
+  }, [isDemo, personalLots]);
 
-  const roleShortcuts: Record<
-    UserRole,
-    { route: AppRoute; titleEn: string; titleHi: string; desc: string; icon: string }[]
-  > = {
-    farmer: [
-      {
-        route: '/advisory',
-        titleEn: 'Crop Advisory',
-        titleHi: 'फसल सलाह और सुरक्षा',
-        desc: 'Check Pre-Harvest Interval (PHI) safety and biological remedies.',
-        icon: 'potted_plant',
-      },
-      {
-        route: '/crop-passport',
-        titleEn: 'Digital Crop Passport',
-        titleHi: 'डिजिटल फसल पासपोर्ट',
-        desc: 'View your scannable QR credential and verification status.',
-        icon: 'badge',
-      },
-      {
-        route: '/market-comparison',
-        titleEn: 'Compare Buyer Offers',
-        titleHi: 'बाजार और शुद्ध आय तुलना',
-        desc: 'Calculate actual net take-home payout after deductions.',
-        icon: 'storefront',
-      },
-      {
-        route: '/harvest-payments',
-        titleEn: 'Payments & Delivery',
-        titleHi: 'तौल एवं 50-50 भुगतान',
-        desc: 'Track zero-Karda weighbridge verification and escrow stages.',
-        icon: 'account_balance_wallet',
-      },
-    ],
-    agent: [
-      {
-        route: '/harvest-payments',
-        titleEn: 'Pickup & Gate-Pass Queue',
-        titleHi: 'पिकअप और गेट-पास टोकन',
-        desc: 'Coordinate village pooling dispatch and weighbridge tokens.',
-        icon: 'local_shipping',
-      },
-      {
-        route: '/crop-passport',
-        titleEn: 'Farmer Lot Verification',
-        titleHi: 'किसान लॉट सत्यापन',
-        desc: 'Inspect Digital Crop Passports and QR credentials.',
-        icon: 'qr_code_scanner',
-      },
-      {
-        route: '/advisory',
-        titleEn: 'Pre-Harvest PHI Guidance',
-        titleHi: 'कटाई-पूर्व सुरक्षा सलाह',
-        desc: 'Help farmers avoid chemical residue rejections.',
-        icon: 'health_and_safety',
-      },
-      {
-        route: '/market-comparison',
-        titleEn: 'Net Realization Calculator',
-        titleHi: 'शुद्ध भाव कैलकुलेटर',
-        desc: 'Compare APMC Mandi vs direct processor bids with farmers.',
-        icon: 'calculate',
-      },
-    ],
-    buyer: [
-      {
-        route: '/crop-passport',
-        titleEn: 'Review Quality Evidence',
-        titleHi: 'गुणवत्ता और पासपोर्ट जांच',
-        desc: 'Inspect NABL MRL status, moisture, and QR credentials.',
-        icon: 'verified',
-      },
-      {
-        route: '/market-comparison',
-        titleEn: 'Compare Procurement Bids',
-        titleHi: 'खरीद बोली और अनुबंध',
-        desc: 'Review farmgate pricing, deductions, and net settlement.',
-        icon: 'gavel',
-      },
-      {
-        route: '/harvest-payments',
-        titleEn: 'Weighbridge & Escrow',
-        titleHi: 'तौल पर्ची और एस्क्रो',
-        desc: 'Monitor verified net weight and 50-50 settlement stages.',
-        icon: 'scale',
-      },
-      {
-        route: '/advisory',
-        titleEn: 'Pre-Harvest Compliance',
-        titleHi: 'अवशेष-मुक्त मानक',
-        desc: 'Review biological remedy standards and PHI safeguards.',
-        icon: 'eco',
-      },
-    ],
-  };
-
-  const shortcuts = roleShortcuts[role];
+  const hasActiveCrops = displayedLots.length > 0;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-5 space-y-5">
-      {/* Demo Account Banner (Only visible for Demo Account) */}
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       <DemoDataBanner />
-
-      {/* Concise Setup Progress Indicator (Only visible if onboarding/profile is incomplete) */}
-      <ContinueSetupCard />
-
-      {/* Personalized Welcome Header */}
       <WelcomeHeader />
-
-      {/* Dominant Personalized Next Action */}
       <FirstCropCard />
 
-      {/* 4 Concise Role-Tailored Quick Actions */}
-      <section aria-label="Primary Workspace Shortcuts">
-        <div className="flex items-center justify-between mb-2.5">
-          <h2 className="text-sm font-extrabold uppercase tracking-wider text-[#000080]">
-            Core Workflows ({shortcuts.length} Shortcuts)
-          </h2>
-          <span className="text-xs font-bold text-[#006B3C] font-hindi">
-            मुख्य सुविधाएँ
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-          {shortcuts.map((item) => (
-            <button
-              key={item.route + item.titleEn}
-              type="button"
-              onClick={() => navigate(item.route)}
-              className="p-4 rounded-xl bg-white hover:bg-[#E8EAF6]/60 border-2 border-[#000080]/20 text-left flex flex-col justify-between gap-3 transition-all anim-kpi-card"
-            >
-              <div className="space-y-2">
-                <div className="w-10 h-10 rounded-xl bg-[#E8F5E9] text-[#138808] border border-[#138808]/30 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[22px]">
-                    {item.icon}
-                  </span>
-                </div>
-                <div>
-                  <h3 className="text-sm font-extrabold text-[#000080]">
-                    {item.titleEn}
-                  </h3>
-                  <span className="text-[11px] font-bold text-[#006B3C] font-hindi block">
-                    {item.titleHi}
-                  </span>
-                </div>
-                <p className="text-xs text-black font-medium leading-relaxed">
-                  {item.desc}
-                </p>
+      {/* =====================================================================
+          ROLE 1: FARMER / FAMILY PROXY WORKSPACE
+      ===================================================================== */}
+      {role === 'farmer' && (
+        <>
+          {/* 2. My Crops */}
+          <section
+            aria-label="My Crops"
+            className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 sm:p-6 space-y-4 shadow-sm"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#000080]/15 pb-3">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#138808] block">
+                  SECTION 1 • MY CROPS
+                </span>
+                <h2 className="text-lg sm:text-xl font-extrabold text-[#000080]">
+                  My Crops (मेरी फसलें)
+                </h2>
               </div>
 
-              <div className="flex items-center gap-1 text-xs font-extrabold text-[#000080]">
-                <span>Open</span>
-                <span className="material-symbols-outlined text-[15px]">
-                  arrow_forward
+              <button
+                type="button"
+                onClick={() => setAddCropModalOpen(true)}
+                className="min-h-[40px] px-4 py-2 rounded-lg bg-[#138808] hover:bg-[#006B3C] text-white text-xs font-extrabold inline-flex items-center gap-1.5 self-start sm:self-auto"
+              >
+                <span className="material-symbols-outlined text-[16px]">
+                  add
+                </span>
+                <span>Add Crop</span>
+              </button>
+            </div>
+
+            {!hasActiveCrops ? (
+              <div className="rounded-xl bg-[#FAF9F6] border-2 border-dashed border-[#000080]/30 p-6 text-center space-y-3">
+                <div className="w-12 h-12 rounded-xl bg-[#E8F5E9] text-[#138808] flex items-center justify-center mx-auto">
+                  <span className="material-symbols-outlined text-[26px]">
+                    grass
+                  </span>
+                </div>
+                <h3 className="text-base font-extrabold text-[#000080]">
+                  No Crops Added Yet
+                </h3>
+                <p className="text-xs sm:text-sm text-black font-medium max-w-lg mx-auto">
+                  You have not added any crops yet. Start by adding a crop such
+                  as Wheat, Soybean, Cotton, or Chana.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setAddCropModalOpen(true)}
+                  className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#138808] hover:bg-[#006B3C] text-white text-xs font-extrabold inline-flex items-center gap-2 shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    add_circle
+                  </span>
+                  <span>Add Crop</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {displayedLots.map((lot) => {
+                  const isSelected = lot.id === selectedLotId;
+                  return (
+                    <div
+                      key={lot.id}
+                      onClick={() => setSelectedLotId(lot.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedLotId(lot.id);
+                        }
+                      }}
+                      className={`rounded-xl p-4 border-2 transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                        isSelected
+                          ? 'bg-[#E8F5E9]/60 border-[#138808] shadow-sm'
+                          : 'bg-[#FAF9F6] border-[#000080]/20 hover:border-[#000080]'
+                      }`}
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="px-2 py-0.5 rounded bg-[#000080] text-white text-[10px] font-extrabold font-tabular">
+                            {lot.id}
+                          </span>
+                          <span className="text-xs font-extrabold text-[#138808] font-tabular">
+                            {lot.quantityQuintals} Quintals
+                          </span>
+                        </div>
+                        <h3 className="text-base font-extrabold text-[#000080]">
+                          {lot.cropName}
+                        </h3>
+                        <p className="text-xs text-black font-semibold">
+                          Variety: {lot.variety} • {lot.surveyNumber}
+                        </p>
+                      </div>
+
+                      <div className="pt-2 border-t border-[#000080]/15 flex items-center justify-between text-xs">
+                        <span className="font-bold text-[#006B3C]">
+                          Offer: ₹
+                          {lot.directBuyerPricePerQuintal.toLocaleString(
+                            'en-IN'
+                          )}
+                          /q
+                        </span>
+                        <span className="font-extrabold text-[#000080]">
+                          {isSelected ? '✓ Active Lot' : 'Select Lot →'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* 3. Crop Advisory, 4. Crop Passport, 5. Buyer Offers, 6. Payments and Delivery */}
+          {!hasActiveCrops ? (
+            <section
+              aria-label="Personal Workspace Modules"
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+            >
+              <PersonalizedEmptyState
+                title="Crop Advisory"
+                headline="Stage-Specific Crop Guidance"
+                description="Select or add a crop to receive stage-specific advisory, pest guidance, and field alerts."
+                actionLabel="Open Crop Advisory"
+                icon="Sprinkler"
+                onAction={() => navigate('/advisory')}
+              />
+              <PersonalizedEmptyState
+                title="Crop Passport"
+                headline="Digital QR Traceability"
+                description="Create a crop lot to generate your Digital Crop Passport and QR traceability view."
+                actionLabel="Add Crop for Passport"
+                icon="qr_code_2"
+                onAction={() => setAddCropModalOpen(true)}
+              />
+              <PersonalizedEmptyState
+                title="Buyer Offers"
+                headline="Mandi vs Direct Buyer Comparison"
+                description="Add a crop lot to compare local Mandi price and institutional buyer offers."
+                actionLabel="Compare Prices"
+                icon="currency_rupee"
+                onAction={() => navigate('/market-comparison')}
+              />
+              <PersonalizedEmptyState
+                title="Payments and Delivery"
+                headline="Pickup & Escrow Settlement"
+                description="Your pickup schedule, gate pass, and payment status will appear here after a crop lot is active."
+                actionLabel="View Logistics & Escrow"
+                icon="local_shipping"
+                onAction={() => navigate('/harvest-payments')}
+              />
+            </section>
+          ) : (
+            <section
+              aria-label="Active Crop Modules"
+              className="grid grid-cols-1 lg:grid-cols-2 gap-5"
+            >
+              {/* 3. Crop Advisory Summary */}
+              <div className="bg-white rounded-2xl border-2 border-[#000080]/20 p-5 flex flex-col justify-between gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                      CROP ADVISORY • {currentLot.cropName}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded bg-[#E8F5E9] text-[#006B3C] text-[11px] font-extrabold">
+                      {currentLot.grade}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-extrabold text-[#000080]">
+                    Stage-Specific Field &amp; Pest Guidance
+                  </h3>
+                  <p className="text-xs text-black font-medium">
+                    Grain Moisture:{' '}
+                    <strong>{currentLot.evidence.moisturePercent}%</strong> •
+                    MRL Status:{' '}
+                    <strong>{currentLot.evidence.mrlStatus}</strong> • Plot:{' '}
+                    <strong>{currentLot.surveyNumber}</strong>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/advisory')}
+                  className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#000080] hover:bg-[#00003C] text-white text-xs font-extrabold flex items-center justify-between"
+                >
+                  <span>Open Full Crop Advisory &amp; Pest Check</span>
+                  <span className="material-symbols-outlined text-[16px]">
+                    arrow_forward
+                  </span>
+                </button>
+              </div>
+
+              {/* 4. Crop Passport Summary */}
+              <div className="bg-white rounded-2xl border-2 border-[#000080]/20 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="space-y-2">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                    CROP PASSPORT • QR VERIFIED
+                  </span>
+                  <h3 className="text-lg font-extrabold text-[#000080]">
+                    Lot {currentLot.id} ({currentLot.variety})
+                  </h3>
+                  <p className="text-xs text-black font-medium">
+                    Grade: <strong>{currentLot.grade}</strong> • Lab Cert:{' '}
+                    <strong className="font-tabular">
+                      {currentLot.evidence.certificateNumber}
+                    </strong>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/crop-passport')}
+                    className="min-h-[40px] px-4 py-2 rounded-lg bg-[#E8F5E9] hover:bg-[#138808] text-[#006B3C] hover:text-white border border-[#138808] text-xs font-extrabold inline-flex items-center gap-1.5 transition-colors"
+                  >
+                    <span>Open Digital Crop Passport</span>
+                    <span className="material-symbols-outlined text-[16px]">
+                      qr_code_2
+                    </span>
+                  </button>
+                </div>
+                <div className="shrink-0 self-center">
+                  <QRCodeComponent
+                    lotId={currentLot.id}
+                    cropName={currentLot.cropName}
+                    size={96}
+                    showControls={false}
+                  />
+                </div>
+              </div>
+
+              {/* 5. Buyer Offers Summary */}
+              <div className="bg-white rounded-2xl border-2 border-[#000080]/20 p-5 flex flex-col justify-between gap-4">
+                <div className="space-y-2">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                    BUYER OFFERS &amp; MANDI COMPARISON
+                  </span>
+                  <h3 className="text-lg font-extrabold text-[#000080]">
+                    Net Gain: +₹
+                    <AnimatedNumber value={arbitrageResult.netDifference} />{' '}
+                    across {currentLot.quantityQuintals} Quintals
+                  </h3>
+                  <p className="text-xs text-black font-medium">
+                    Local Mandi: ₹
+                    {currentLot.mandiPricePerQuintal.toLocaleString('en-IN')}/q
+                    vs Kisan-SPO Direct Buyer: ₹
+                    {currentLot.directBuyerPricePerQuintal.toLocaleString(
+                      'en-IN'
+                    )}
+                    /q
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/market-comparison')}
+                  className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#138808] hover:bg-[#006B3C] text-white text-xs font-extrabold flex items-center justify-between"
+                >
+                  <span>Compare Buyer Offers &amp; Lock Price</span>
+                  <span className="material-symbols-outlined text-[16px]">
+                    currency_rupee
+                  </span>
+                </button>
+              </div>
+
+              {/* 6. Payments and Delivery Summary */}
+              <div className="bg-white rounded-2xl border-2 border-[#000080]/20 p-5 flex flex-col justify-between gap-4">
+                <div className="space-y-2">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                    PAYMENTS &amp; DELIVERY
+                  </span>
+                  <h3 className="text-lg font-extrabold text-[#000080]">
+                    Farm-Gate Pickup &amp; T+0 Escrow
+                  </h3>
+                  <p className="text-xs text-black font-medium">
+                    Expected Harvest Window:{' '}
+                    <strong>{currentLot.harvestDate}</strong> • Direct bank
+                    settlement upon digital weighbridge verification.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate('/harvest-payments')}
+                  className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#000080] hover:bg-[#00003C] text-white text-xs font-extrabold flex items-center justify-between"
+                >
+                  <span>View Pickup Schedule &amp; Escrow Status</span>
+                  <span className="material-symbols-outlined text-[16px]">
+                    local_shipping
+                  </span>
+                </button>
+              </div>
+            </section>
+          )}
+        </>
+      )}
+
+      {/* =====================================================================
+          ROLE 2: VILLAGE AGENT / ARHTIYA PARTNER WORKSPACE
+      ===================================================================== */}
+      {role === 'agent' && (
+        <section
+          aria-label="Village Agent Operations"
+          className="grid grid-cols-1 md:grid-cols-2 gap-5"
+        >
+          {/* 2. Farmer Onboarding Queue */}
+          <div className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 flex flex-col justify-between gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                  1 • FARMER ONBOARDING QUEUE
+                </span>
+                <span className="px-2.5 py-0.5 rounded bg-[#E8EAF6] text-[#000080] text-xs font-extrabold font-tabular">
+                  {displayedLots.length} Active Lot{displayedLots.length === 1 ? '' : 's'}
                 </span>
               </div>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* Personal Operational Overview: State-Driven Empty States vs Populated Personal Summary */}
-      <section aria-label="Your Personal Operational Summary">
-        <div className="flex items-center justify-between mb-2.5">
-          <h2 className="text-sm font-extrabold uppercase tracking-wider text-[#000080]">
-            {user?.isDemoAccount
-              ? 'Demo Operational Summary (Sample Records)'
-              : 'Your Personal Activity'}
-          </h2>
-          {activeUserLots.length > 0 && (
+              <h3 className="text-lg font-extrabold text-[#000080]">
+                Village Farmer Lot Registration
+              </h3>
+              <p className="text-xs text-black font-medium">
+                Register farmer harvest lots, verify survey plots, and issue
+                Digital Crop Passports for your village cluster.
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => setAddCropModalOpen(true)}
-              className="text-xs font-extrabold text-[#138808] hover:underline flex items-center gap-1"
+              className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#138808] hover:bg-[#006B3C] text-white text-xs font-extrabold flex items-center justify-between"
             >
-              <span className="material-symbols-outlined text-[16px]">add</span>
-              <span>Add Crop Lot</span>
+              <span>Add Farmer Crop Lot to Queue</span>
+              <span className="material-symbols-outlined text-[16px]">
+                person_add
+              </span>
             </button>
-          )}
+          </div>
+
+          {/* 3. Pickup Scheduling */}
+          <div className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 flex flex-col justify-between gap-4">
+            <div className="space-y-2">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                2 • PICKUP SCHEDULING
+              </span>
+              <h3 className="text-lg font-extrabold text-[#000080]">
+                Multi-Farm Cluster Dispatch
+              </h3>
+              <p className="text-xs text-black font-medium">
+                Pool village harvest volumes to unlock zero-cost farm-gate truck
+                dispatch and coordinate arrival slots.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/harvest-payments')}
+              className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#000080] hover:bg-[#00003C] text-white text-xs font-extrabold flex items-center justify-between"
+            >
+              <span>Open Pickup Scheduling Desk</span>
+              <span className="material-symbols-outlined text-[16px]">
+                local_shipping
+              </span>
+            </button>
+          </div>
+
+          {/* 4. Gate-Pass and Verification Queue */}
+          <div className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 flex flex-col justify-between gap-4">
+            <div className="space-y-2">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                3 • GATE-PASS &amp; VERIFICATION QUEUE
+              </span>
+              <h3 className="text-lg font-extrabold text-[#000080]">
+                Weighbridge &amp; Moisture Assay Verification
+              </h3>
+              <p className="text-xs text-black font-medium">
+                Inspect NABL residue-free certificates, verify QR gate passes,
+                and confirm net quintal weights at dispatch.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/crop-passport')}
+              className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#E8EAF6] hover:bg-[#000080] text-[#000080] hover:text-white text-xs font-extrabold flex items-center justify-between transition-colors"
+            >
+              <span>Inspect Crop Passports &amp; QR Codes</span>
+              <span className="material-symbols-outlined text-[16px]">
+                qr_code_scanner
+              </span>
+            </button>
+          </div>
+
+          {/* 5. Commission and Settlement Summary */}
+          <div className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 flex flex-col justify-between gap-4">
+            <div className="space-y-2">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                4 • COMMISSION &amp; SETTLEMENT SUMMARY
+              </span>
+              <h3 className="text-lg font-extrabold text-[#000080]">
+                Transparent Agent Facilitation Ledger
+              </h3>
+              <p className="text-xs text-black font-medium">
+                Track verified quality-grading facilitation incentives and T+0
+                farmer bank settlement status.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/market-comparison')}
+              className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#E8F5E9] hover:bg-[#138808] text-[#006B3C] hover:text-white border border-[#138808] text-xs font-extrabold flex items-center justify-between transition-colors"
+            >
+              <span>Review Price Spreads &amp; Margins</span>
+              <span className="material-symbols-outlined text-[16px]">
+                payments
+              </span>
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* =====================================================================
+          ROLE 3: INSTITUTIONAL BUYER WORKSPACE
+      ===================================================================== */}
+      {role === 'buyer' && (
+        <section
+          aria-label="Institutional Buyer Operations"
+          className="grid grid-cols-1 md:grid-cols-2 gap-5"
+        >
+          {/* 2. Available Crop Lots */}
+          <div className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 flex flex-col justify-between gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                  1 • AVAILABLE CROP LOTS
+                </span>
+                <span className="px-2.5 py-0.5 rounded bg-[#E8F5E9] text-[#006B3C] text-xs font-extrabold font-tabular">
+                  {displayedLots.length} Verified Lot{displayedLots.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <h3 className="text-lg font-extrabold text-[#000080]">
+                Traceable Farm-Gate Inventory
+              </h3>
+              <p className="text-xs text-black font-medium">
+                Browse identity-preserved Sharbati Wheat, High-Oil Soybean, and
+                Cotton lots with full plot-level provenance.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/crop-passport')}
+              className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#138808] hover:bg-[#006B3C] text-white text-xs font-extrabold flex items-center justify-between"
+            >
+              <span>Browse Available Crop Lots</span>
+              <span className="material-symbols-outlined text-[16px]">
+                inventory_2
+              </span>
+            </button>
+          </div>
+
+          {/* 3. Quality and Passport Verification */}
+          <div className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 flex flex-col justify-between gap-4">
+            <div className="space-y-2">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                2 • QUALITY &amp; PASSPORT VERIFICATION
+              </span>
+              <h3 className="text-lg font-extrabold text-[#000080]">
+                NABL Lab Assay &amp; Residue-Free Audit
+              </h3>
+              <p className="text-xs text-black font-medium">
+                Verify moisture content, foreign matter thresholds, and zero
+                synthetic pesticide logs before locking procurement bids.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/crop-passport')}
+              className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#000080] hover:bg-[#00003C] text-white text-xs font-extrabold flex items-center justify-between"
+            >
+              <span>Verify Digital Crop Passports</span>
+              <span className="material-symbols-outlined text-[16px]">
+                verified
+              </span>
+            </button>
+          </div>
+
+          {/* 4. Offer Comparison and Procurement Desk */}
+          <div className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 flex flex-col justify-between gap-4">
+            <div className="space-y-2">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                3 • OFFER COMPARISON &amp; PROCUREMENT DESK
+              </span>
+              <h3 className="text-lg font-extrabold text-[#000080]">
+                Direct-to-Farmer Arbitrage Calculator
+              </h3>
+              <p className="text-xs text-black font-medium">
+                Structure competitive farm-gate bids that reward quality while
+                eliminating intermediary Mandi friction.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/market-comparison')}
+              className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#E8EAF6] hover:bg-[#000080] text-[#000080] hover:text-white text-xs font-extrabold flex items-center justify-between transition-colors"
+            >
+              <span>Open Offer Comparison Desk</span>
+              <span className="material-symbols-outlined text-[16px]">
+                calculate
+              </span>
+            </button>
+          </div>
+
+          {/* 5. Settlement and Delivery Tracking */}
+          <div className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 flex flex-col justify-between gap-4">
+            <div className="space-y-2">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-[#138808]">
+                4 • SETTLEMENT &amp; DELIVERY TRACKING
+              </span>
+              <h3 className="text-lg font-extrabold text-[#000080]">
+                Escrow Release &amp; Weighbridge Telemetry
+              </h3>
+              <p className="text-xs text-black font-medium">
+                Monitor live dispatch transit, digital gate-pass check-ins, and
+                automated T+0 escrow settlement milestones.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/harvest-payments')}
+              className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#E8F5E9] hover:bg-[#138808] text-[#006B3C] hover:text-white border border-[#138808] text-xs font-extrabold flex items-center justify-between transition-colors"
+            >
+              <span>Track Settlement &amp; Delivery</span>
+              <span className="material-symbols-outlined text-[16px]">
+                fact_check
+              </span>
+            </button>
+          </div>
+        </section>
+      )}
+
+      <ProfileSummaryCard />
+      <AddCropModal />
+    </div>
+  );
+};
+
+export const ProfileSummaryCard: React.FC = () => {
+  const { user, role, language, navigate, personalLots } = useKisan();
+
+  if (!user) return null;
+
+  const initials = (user.name || 'KS')
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const roleLabels: Record<UserRole, string> = {
+    farmer: 'Farmer / Family Proxy',
+    agent: 'Village Agent / Arhtiya Partner',
+    buyer: 'Institutional Buyer',
+  };
+
+  const locationDisplay =
+    [user.village, user.district, user.state].filter(Boolean).join(', ') ||
+    'Not specified yet';
+
+  return (
+    <section
+      aria-label="Your Profile Summary"
+      className="bg-white rounded-xl border-2 border-[#000080]/20 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+    >
+      <div className="flex items-center gap-3.5 min-w-0">
+        <div className="w-12 h-12 rounded-xl bg-[#000080] text-white font-extrabold text-base flex items-center justify-center shrink-0">
+          {initials}
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm sm:text-base font-extrabold text-[#000080] truncate">
+              {user.name}
+            </h3>
+            {user.isDemoAccount && <DemoAccountBadge />}
+          </div>
+          <p className="text-xs text-black font-semibold truncate">
+            {user.email} • {roleLabels[role]}
+          </p>
+          <p className="text-[11px] text-[#006B3C] font-bold mt-0.5">
+            Region: {locationDisplay} • Language:{' '}
+            {language === 'hi' ? 'हिंदी (Hindi)' : 'English'} • Saved Crops:{' '}
+            {personalLots.length}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => navigate('/profile')}
+          className="min-h-[40px] px-3.5 py-2 rounded-lg bg-[#E8EAF6] hover:bg-[#000080] hover:text-white text-[#000080] text-xs font-extrabold transition-colors"
+        >
+          Edit Profile &amp; Preferences
+        </button>
+      </div>
+    </section>
+  );
+};
+
+export const ProfileSettings: React.FC = () => {
+  const {
+    role,
+    setRole,
+    language,
+    setLanguage,
+    resetDemoDataset,
+    navigate,
+    personalLots,
+    setAddCropModalOpen,
+    showToast,
+  } = useKisan();
+  const { user, updateUserProfile, logout } = useAuth();
+
+  const [displayName, setDisplayName] = useState<string>(user?.name || '');
+  const [phoneNumber, setPhoneNumber] = useState<string>(
+    user?.phoneNumber || ''
+  );
+  const [village, setVillage] = useState<string>(user?.village || '');
+  const [district, setDistrict] = useState<string>(user?.district || '');
+  const [stateName, setStateName] = useState<string>(user?.state || '');
+  const [selectedRole, setSelectedRole] = useState<UserRole>(role);
+  const [preferredLang, setPreferredLang] = useState<'en' | 'hi'>(language);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [saveMessage, setSaveMessage] = useState<string>('');
+  const [errorMsg, setErrorMsg] = useState<string>('');
+
+  useEffect(() => {
+    if (!user) return;
+    setDisplayName(user.name || '');
+    setPhoneNumber(user.phoneNumber || '');
+    setVillage(user.village || '');
+    setDistrict(user.district || '');
+    setStateName(user.state || '');
+    const safeRole: UserRole =
+      user.role === 'agent' || user.role === 'buyer' ? user.role : 'farmer';
+    setSelectedRole(safeRole);
+    setPreferredLang(user.preferredLanguage || language);
+  }, [user?.id]);
+
+  if (!user) return null;
+
+  const initials = (user.name || 'KS')
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSaveMessage('');
+
+    const cleanName = displayName.trim();
+    if (!cleanName) {
+      setErrorMsg('Display name cannot be empty.');
+      return;
+    }
+
+    setSaving(true);
+    const hasLocation = Boolean(
+      village.trim() || district.trim() || stateName.trim()
+    );
+    const res = await updateUserProfile({
+      name: cleanName,
+      phoneNumber: phoneNumber.trim(),
+      village: village.trim(),
+      district: district.trim(),
+      state: stateName.trim(),
+      role: selectedRole,
+      preferredLanguage: preferredLang,
+      onboardingStatus: 'COMPLETED',
+      onboardingStep: 4,
+      profileCompletion: hasLocation ? 100 : 85,
+    });
+    setSaving(false);
+
+    if (!res.ok) {
+      setErrorMsg(res.error || 'Could not save profile updates.');
+      return;
+    }
+
+    setRole(selectedRole);
+    setLanguage(preferredLang);
+    setSaveMessage(
+      'Your personal profile and workspace preferences have been saved.'
+    );
+    showToast('Profile settings updated and persisted.', 'green');
+  };
+
+  const handleResetOnboarding = async () => {
+    setSaving(true);
+    setErrorMsg('');
+    const res = await updateUserProfile({
+      onboardingStatus: 'IN_PROGRESS',
+      onboardingStep: 1,
+    });
+    setSaving(false);
+    if (!res.ok) {
+      setErrorMsg(res.error || 'Could not reset onboarding wizard.');
+      return;
+    }
+    navigate('/onboarding');
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+      {user.isDemoAccount && <DemoDataBanner />}
+
+      {/* Top Profile Identity Header */}
+      <div className="bg-white rounded-2xl border-2 border-[#000080] p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-[#000080] text-white font-black text-2xl flex items-center justify-center shrink-0">
+            {initials}
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-[#000080]">
+                {user.name}
+              </h1>
+              {user.isDemoAccount ? (
+                <DemoAccountBadge />
+              ) : (
+                <span className="px-2.5 py-0.5 rounded bg-[#E8F5E9] text-[#006B3C] border border-[#138808]/40 text-[10px] font-extrabold uppercase">
+                  Personal Account
+                </span>
+              )}
+            </div>
+            <p className="text-xs sm:text-sm text-black font-semibold">
+              {user.email} • ID:{' '}
+              <span className="font-tabular">{user.uidLabel}</span>
+            </p>
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span
+                className={`px-2 py-0.5 rounded font-extrabold text-[11px] ${
+                  user.emailVerified
+                    ? 'bg-[#E8F5E9] text-[#138808] border border-[#138808]/30'
+                    : 'bg-[#FFDCC2] text-[#371A00] border border-[#FF9933]'
+                }`}
+              >
+                {user.emailVerified
+                  ? '✓ Provider Verified Email'
+                  : 'Unverified Email'}
+              </span>
+              <span className="px-2 py-0.5 rounded bg-[#E8EAF6] text-[#000080] font-extrabold text-[11px] font-tabular">
+                Onboarding: {user.onboardingStatus || 'COMPLETED'} (
+                {user.profileCompletion ?? 100}%)
+              </span>
+            </div>
+          </div>
         </div>
 
-        {activeUserLots.length === 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <PersonalizedEmptyState
-              title="My Crops"
-              headline="No crops added yet."
-              description="Add your first crop to begin exploring eligibility, QR Crop Passports, and procurement."
-              actionLabel="Add Crop"
-              icon="grass"
-              onAction={() => setAddCropModalOpen(true)}
-            />
-            <PersonalizedEmptyState
-              title="Buyer Offers"
-              headline="Your buyer comparisons will appear here."
-              description="Compare local Mandi deductions against direct farmgate buyer bids using the net realization calculator."
-              actionLabel="Explore Buyer Matching"
-              icon="storefront"
-              onAction={() => navigate('/market-comparison')}
-            />
-            <PersonalizedEmptyState
-              title="Payments"
-              headline="No payment activity yet."
-              description="Track delivery and 50-50 split escrow milestones once your first procurement transaction is created."
-              actionLabel="Learn How Payments Work"
-              icon="account_balance_wallet"
-              onAction={() => navigate('/harvest-payments')}
-            />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleResetOnboarding}
+            className="min-h-[42px] px-3.5 py-2 rounded-lg bg-[#E8EAF6] hover:bg-[#000080] hover:text-white text-[#000080] text-xs font-extrabold transition-colors"
+          >
+            Re-run Onboarding Wizard
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="min-h-[42px] px-3.5 py-2 rounded-lg bg-white border-2 border-[#000080] text-[#000080] text-xs font-extrabold"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+
+      {errorMsg && (
+        <div
+          role="alert"
+          className="p-3.5 rounded-xl bg-[#FF9933] text-black border-2 border-black text-xs font-extrabold"
+        >
+          {errorMsg}
+        </div>
+      )}
+
+      {saveMessage && (
+        <div
+          role="status"
+          className="p-3.5 rounded-xl bg-[#E8F5E9] text-[#006B3C] border-2 border-[#138808] text-xs font-extrabold"
+        >
+          ✓ {saveMessage}
+        </div>
+      )}
+
+      <form onSubmit={handleSaveProfile} className="space-y-6" noValidate>
+        {/* Section 1: Personal Information */}
+        <section className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 sm:p-6 space-y-4">
+          <div className="border-b border-[#000080]/15 pb-3">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#138808] block">
+              SECTION 1 • PERSONAL IDENTITY
+            </span>
+            <h2 className="text-lg font-extrabold text-[#000080]">
+              Personal Information (व्यक्तिगत जानकारी)
+            </h2>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* 1. User's Saved Crop Lots */}
-            <div className="bg-white rounded-xl border-2 border-[#000080]/25 p-4 flex flex-col justify-between gap-3">
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold uppercase text-[#000080]">
-                    My Crop Lots ({activeUserLots.length})
-                  </span>
-                  {user?.isDemoAccount && (
-                    <span className="px-2 py-0.5 rounded bg-[#FFDCC2] text-[#371A00] text-[10px] font-extrabold">
-                      DEMO DATA
-                    </span>
-                  )}
-                </div>
 
-                {activeUserLots.slice(0, 2).map((lot) => (
-                  <div
-                    key={lot.id}
-                    className="p-3 rounded-lg bg-[#E8EAF6]/60 border border-[#000080]/20 flex items-center justify-between gap-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-extrabold text-[#000080] font-tabular">
-                          {lot.shortCode}
-                        </span>
-                        <span className="text-xs font-extrabold text-black truncate">
-                          {lot.cropName}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-black font-semibold block">
-                        {lot.variety} • {lot.quantityQuintals} Quintals
-                      </span>
-                      <span className="text-[10px] font-extrabold text-[#138808] uppercase block mt-0.5">
-                        {lot.verificationStatus.replace(/_/g, ' ')}
-                      </span>
-                    </div>
-                    <QRCodeComponent
-                      lotId={lot.id}
-                      verificationStatus={lot.verificationStatus}
-                      size={56}
-                      onInspect={() => {
-                        setSelectedLotId(lot.id);
-                        navigate('/crop-passport');
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedLotId(activeUserLots[0].id);
-                  navigate('/crop-passport');
-                }}
-                className="w-full min-h-[42px] px-4 py-2 rounded-lg bg-[#000080] hover:bg-[#00003C] text-white text-xs font-extrabold"
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="profile-name"
+                className="block text-xs font-extrabold text-[#000080] mb-1"
               >
-                Open Digital Crop Passport
-              </button>
+                Display Name (पूरा नाम)
+              </label>
+              <input
+                id="profile-name"
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="w-full h-11 px-3 rounded-lg bg-white text-black border-2 border-[#000080]/50 focus:border-[#000080] text-sm font-semibold"
+              />
             </div>
 
-            {/* 2. Personalized Net Realization Estimate for User's Primary Crop */}
-            <div className="bg-white rounded-xl border-2 border-[#000080]/25 p-4 flex flex-col justify-between gap-3">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold uppercase text-[#000080]">
-                    Net Realization Estimate
-                  </span>
-                  <span className="px-2 py-0.5 rounded bg-[#E8F5E9] text-[#138808] text-[10px] font-extrabold font-tabular">
-                    {activeUserLots[0].quantityQuintals} Quintals
-                  </span>
-                </div>
-                <h3 className="text-base font-extrabold text-[#000080]">
-                  {activeUserLots[0].cropName} ({activeUserLots[0].shortCode})
-                </h3>
-                <div className="p-3 rounded-lg bg-[#E8F5E9] border border-[#138808] space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-black">
-                      Direct Buyer Net:
-                    </span>
-                    <span className="font-extrabold text-[#138808] font-tabular">
-                      {formatINR(arbitrageResult.directNetPayout)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-black">
-                      Local Mandi Net:
-                    </span>
-                    <span className="font-extrabold text-[#000080] font-tabular">
-                      {formatINR(arbitrageResult.mandiNetPayout)}
-                    </span>
-                  </div>
-                  <div className="pt-1 border-t border-[#138808]/30 flex items-center justify-between text-xs font-extrabold text-[#006B3C]">
-                    <span>Estimated Net Gain:</span>
-                    <span className="font-tabular">
-                      +{formatINR(arbitrageResult.netDifference)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  updateArbitrageInput({
-                    quantityQuintals: activeUserLots[0].quantityQuintals,
-                  });
-                  navigate('/market-comparison');
-                }}
-                className="w-full min-h-[42px] px-4 py-2 rounded-lg bg-[#138808] hover:bg-[#006B3C] text-white text-xs font-extrabold"
+            <div>
+              <label
+                htmlFor="profile-email-readonly"
+                className="block text-xs font-extrabold text-[#000080] mb-1"
               >
-                Compare Buyer Offers
-              </button>
+                Authenticated Email (पंजीकृत ईमेल)
+              </label>
+              <input
+                id="profile-email-readonly"
+                type="email"
+                readOnly
+                value={user.email}
+                className="w-full h-11 px-3 rounded-lg bg-[#E8EAF6]/60 text-black border border-[#000080]/30 text-sm font-semibold cursor-not-allowed"
+              />
             </div>
 
-            {/* 3. Weighing & Payment Milestone Summary */}
-            <div className="bg-white rounded-xl border-2 border-[#000080]/25 p-4 flex flex-col justify-between gap-3">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-extrabold uppercase text-[#000080]">
-                    Weighbridge &amp; 50-50 Escrow
-                  </span>
-                  <span className="px-2 py-0.5 rounded bg-[#E8EAF6] text-[#000080] text-[10px] font-extrabold">
-                    {user?.isDemoAccount ? 'DEMO ESCROW' : 'READY WHEN LOCKED'}
-                  </span>
-                </div>
-                <h3 className="text-base font-extrabold text-[#000080]">
-                  {user?.isDemoAccount
-                    ? '50% Instant UPI + 50% Mill Lock'
-                    : 'Staged Payment Protection'}
-                </h3>
-                <p className="text-xs text-black font-medium leading-relaxed">
-                  {user?.isDemoAccount
-                    ? `Sample Lot ${activeUserLots[0].shortCode}: ${formatINR(
-                        arbitrageResult.firstInstallment50
-                      )} released at weighbridge + ${formatINR(
-                        arbitrageResult.remainingInstallment50
-                      )} on mill delivery.`
-                    : `When you lock a buyer offer for ${activeUserLots[0].shortCode}, 50% (${formatINR(
-                        arbitrageResult.firstInstallment50
-                      )}) is released at weighbridge sign-off and 50% on delivery.`}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => navigate('/harvest-payments')}
-                className="w-full min-h-[42px] px-4 py-2 rounded-lg bg-white hover:bg-[#E8EAF6] text-[#000080] border-2 border-[#000080] text-xs font-extrabold"
+            <div>
+              <label
+                htmlFor="profile-phone"
+                className="block text-xs font-extrabold text-[#000080] mb-1"
               >
-                Open Weighbridge &amp; Escrow Tracker
-              </button>
+                Phone Number (Optional • मोबाइल नंबर)
+              </label>
+              <input
+                id="profile-phone"
+                type="tel"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                placeholder="e.g., +91 98260-XXXXX"
+                className="w-full h-11 px-3 rounded-lg bg-white text-black border-2 border-[#000080]/50 focus:border-[#000080] text-sm font-semibold"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="profile-village"
+                className="block text-xs font-extrabold text-[#000080] mb-1"
+              >
+                Village / Mandi Hub (गाँव / मंडी केंद्र)
+              </label>
+              <input
+                id="profile-village"
+                type="text"
+                value={village}
+                onChange={(e) => setVillage(e.target.value)}
+                placeholder="e.g., Chhaigaon Makhan"
+                className="w-full h-11 px-3 rounded-lg bg-white text-black border-2 border-[#000080]/50 focus:border-[#000080] text-sm font-semibold"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="profile-district"
+                className="block text-xs font-extrabold text-[#000080] mb-1"
+              >
+                District (जिला)
+              </label>
+              <input
+                id="profile-district"
+                type="text"
+                value={district}
+                onChange={(e) => setDistrict(e.target.value)}
+                placeholder="e.g., Khandwa"
+                className="w-full h-11 px-3 rounded-lg bg-white text-black border-2 border-[#000080]/50 focus:border-[#000080] text-sm font-semibold"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="profile-state"
+                className="block text-xs font-extrabold text-[#000080] mb-1"
+              >
+                State (राज्य)
+              </label>
+              <input
+                id="profile-state"
+                type="text"
+                value={stateName}
+                onChange={(e) => setStateName(e.target.value)}
+                placeholder="e.g., Madhya Pradesh"
+                className="w-full h-11 px-3 rounded-lg bg-white text-black border-2 border-[#000080]/50 focus:border-[#000080] text-sm font-semibold"
+              />
             </div>
           </div>
-        )}
+        </section>
+
+        {/* Section 2: Workspace Preferences */}
+        <section className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 sm:p-6 space-y-4">
+          <div className="border-b border-[#000080]/15 pb-3">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#138808] block">
+              SECTION 2 • WORKSPACE &amp; LANGUAGE
+            </span>
+            <h2 className="text-lg font-extrabold text-[#000080]">
+              Workspace Preferences (कार्यक्षेत्र और भाषा प्राथमिकताएं)
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label
+                htmlFor="profile-role-select"
+                className="block text-xs font-extrabold text-[#000080] mb-1"
+              >
+                Selected Workspace Role (सक्रिय कार्यक्षेत्र)
+              </label>
+              <select
+                id="profile-role-select"
+                value={selectedRole}
+                onChange={(e) => setSelectedRole(e.target.value as UserRole)}
+                className="w-full h-11 px-3 rounded-lg bg-white text-black border-2 border-[#000080] text-sm font-extrabold"
+              >
+                <option value="farmer">
+                  Farmer / Family Proxy (किसान / पारिवारिक प्रतिनिधि)
+                </option>
+                <option value="agent">
+                  Village Agent / Arhtiya Partner (ग्रामीण एजेंट / आढ़तिया साथी)
+                </option>
+                <option value="buyer">
+                  Institutional Buyer (संस्थागत खरीदार)
+                </option>
+              </select>
+              <span className="text-[11px] text-black font-medium block mt-1">
+                Adjusts your dashboard layout and workflow shortcuts. Server-side
+                authorization governs restricted records.
+              </span>
+            </div>
+
+            <div>
+              <span className="block text-xs font-extrabold text-[#000080] mb-1">
+                Preferred Interface Language (पसंदीदा भाषा)
+              </span>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setPreferredLang('en')}
+                  className={`h-11 px-3 rounded-lg border-2 text-xs font-extrabold flex items-center justify-between ${
+                    preferredLang === 'en'
+                      ? 'bg-[#000080] text-white border-[#000080]'
+                      : 'bg-white text-black border-[#000080]/30 hover:bg-[#E8EAF6]'
+                  }`}
+                >
+                  <span>English (EN)</span>
+                  <span className="material-symbols-outlined text-[16px]">
+                    {preferredLang === 'en'
+                      ? 'check_circle'
+                      : 'radio_button_unchecked'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreferredLang('hi')}
+                  className={`h-11 px-3 rounded-lg border-2 text-xs font-extrabold font-hindi flex items-center justify-between ${
+                    preferredLang === 'hi'
+                      ? 'bg-[#000080] text-white border-[#000080]'
+                      : 'bg-white text-black border-[#000080]/30 hover:bg-[#E8EAF6]'
+                  }`}
+                >
+                  <span>हिंदी (Hindi)</span>
+                  <span className="material-symbols-outlined text-[16px]">
+                    {preferredLang === 'hi'
+                      ? 'check_circle'
+                      : 'radio_button_unchecked'}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <button
+              type="submit"
+              disabled={saving}
+              className="min-h-[46px] px-6 py-2.5 rounded-xl bg-[#138808] hover:bg-[#006B3C] text-white text-sm font-extrabold flex items-center gap-2 shadow-md anim-btn-press"
+            >
+              <span className="material-symbols-outlined text-[18px]">
+                save
+              </span>
+              <span>
+                {saving ? 'Saving Preferences...' : 'Save Profile Changes'}
+              </span>
+            </button>
+          </div>
+        </section>
+      </form>
+
+      {/* Section 3: Personal Crop Lots & Account Security */}
+      <section className="bg-white rounded-2xl border-2 border-[#000080]/25 p-5 sm:p-6 space-y-4">
+        <div className="border-b border-[#000080]/15 pb-3 flex items-center justify-between gap-2">
+          <div>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#138808] block">
+              SECTION 3 • ACCOUNT &amp; SECURITY
+            </span>
+            <h2 className="text-lg font-extrabold text-[#000080]">
+              Account Status, Data Isolation &amp; Sign-Out
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAddCropModalOpen(true)}
+            className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-[#E8F5E9] hover:bg-[#138808] text-[#006B3C] hover:text-white border border-[#138808] text-xs font-extrabold transition-colors"
+          >
+            + Add Personal Crop Lot
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="p-3.5 rounded-xl bg-[#E8EAF6]/60 border border-[#000080]/20">
+            <span className="font-bold text-[#000080] uppercase block text-[10px]">
+              Personal Crop Lots
+            </span>
+            <strong className="text-base font-extrabold text-black font-tabular block mt-0.5">
+              {personalLots.length} Saved Lot
+              {personalLots.length === 1 ? '' : 's'}
+            </strong>
+            <span className="text-[11px] text-black font-medium">
+              Scoped exclusively to {user.email}
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#E8EAF6]/60 border border-[#000080]/20">
+            <span className="font-bold text-[#000080] uppercase block text-[10px]">
+              Profile Created
+            </span>
+            <strong className="text-sm font-extrabold text-black font-tabular block mt-0.5">
+              {user.createdAt || 'Active Session'}
+            </strong>
+            <span className="text-[11px] text-black font-medium">
+              Last updated: {user.updatedAt || 'Just now'}
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#E8EAF6]/60 border border-[#000080]/20">
+            <span className="font-bold text-[#000080] uppercase block text-[10px]">
+              Data Scope &amp; Security
+            </span>
+            <strong className="text-sm font-extrabold text-[#138808] block mt-0.5">
+              {user.isDemoAccount
+                ? 'Isolated Demo Dataset'
+                : 'Private User Workspace'}
+            </strong>
+            <span className="text-[11px] text-black font-medium">
+              Passwords &amp; tokens are never displayed
+            </span>
+          </div>
+        </div>
+
+        <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-[#000080]/15">
+          {user.isDemoAccount ? (
+            <button
+              type="button"
+              onClick={resetDemoDataset}
+              className="min-h-[42px] px-4 py-2 rounded-lg bg-white hover:bg-[#E8EAF6] text-[#000080] border-2 border-[#000080] text-xs font-extrabold"
+            >
+              Reset Demo Dataset
+            </button>
+          ) : (
+            <span className="text-xs text-black font-semibold">
+              Signed in securely as <strong>{user.email}</strong>
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={logout}
+            className="min-h-[44px] px-5 py-2.5 rounded-xl bg-[#FF9933] hover:bg-[#e6821f] text-black border-2 border-black text-xs font-extrabold flex items-center gap-1.5"
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              logout
+            </span>
+            <span>Sign Out of Kisan-SPO</span>
+          </button>
+        </div>
       </section>
 
       <AddCropModal />

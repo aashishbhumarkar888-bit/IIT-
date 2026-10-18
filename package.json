@@ -9,6 +9,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit",
+    "test": "node --import tsx --test tests/server-session.test.js tests/session-token-ui.test.js tests/crop-to-cash.test.js tests/crop-to-cash-calculations.test.js tests/crop-to-cash-adapter.test.js",
+    "test:integration": "node --import tsx --test tests/server-auth.test.js tests/c2c-integration.test.js tests/api-v1-integration.test.js tests/stage2-features.test.js tests/adversarial-security.test.js tests/batch2-journeys.test.js",
+    "test:all": "node --import tsx --test tests/server-session.test.js tests/session-token-ui.test.js tests/crop-to-cash.test.js tests/crop-to-cash-calculations.test.js tests/crop-to-cash-adapter.test.js tests/server-auth.test.js tests/c2c-integration.test.js tests/api-v1-integration.test.js tests/stage2-features.test.js tests/adversarial-security.test.js tests/batch2-journeys.test.js",
+    "test:load": "k6 run tests/load/k6.js"
     "test": "node --import tsx --test tests/server-session.test.js tests/session-token-ui.test.js tests/crop-to-cash.test.js tests/crop-to-cash-calculations.test.js tests/crop-to-cash-adapter.test.js",
     "test:integration": "node tests/run-with-server.js --import tsx --test tests/server-auth.test.js tests/c2c-integration.test.js tests/api-v1-integration.test.js tests/full-system-qa.test.js",
     "test:all": "node tests/run-with-server.js --import tsx --test tests/server-auth.test.js tests/server-session.test.js tests/session-token-ui.test.js tests/crop-to-cash.test.js tests/crop-to-cash-calculations.test.js tests/crop-to-cash-adapter.test.js tests/c2c-integration.test.js tests/api-v1-integration.test.js tests/full-system-qa.test.js"
@@ -35,11 +40,11 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.28.0",
-    "eslint": "^9.20.0",
+    "esbuild": ">=0.25.0",
+    "eslint": ">=9.20.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^5.8.0"
+    "typescript": ">=5.8.0"
   },
   "overrides": {
     "@typescript-eslint/rule-tester": "8.70.0"

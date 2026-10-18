@@ -1,359 +1,74 @@
-# Kisan-SPO × KisanSetu AI — Unified API Contract
+# Kisan-SPO / KisanSetu AI — Authoritative API Contract
 
-**Status:** APPROVED & DEPLOYED (Authoritative Backend & Frontend Integration Contract)
-**Base URLs:**
-- Production / Local REST API: `http://localhost:3000/api/v1` (Typed Adapter Contract)
-- Legacy C2C & Admin Analytics: `http://localhost:3000/api`
-**Authentication:** `Authorization: Bearer <signed-hmac-token>` header on all protected endpoints.
-**Response Headers:** `Cache-Control: private, no-store` on all dynamic API routes.
-**Standard Error Envelope:**
-```json
-{
-  "error": {
-    "code": "VALIDATION_FAILED | UNAUTHORIZED | FORBIDDEN | NOT_FOUND | CONFLICT | SERVICE_UNAVAILABLE",
-    "message": "Human-readable descriptive error message",
-    "retryable": false
-  }
-}
-```
+**Status:** ACTIVE & VERIFIED  
+**Version:** v1.0.0 (Stage 1 Baseline)  
+**Base Convention:** `/api/v1` for Crop-to-Cash and core domain entities; `/api/auth` for session management; `/api/profile` for user workspaces; `/api/admin` for administrative controls. Legacy `/api/c2c` endpoints are preserved for backward compatibility.
 
 ---
 
-## 1. Authentication & Session Synchronization
+## 1. Authentication & Security Conventions
 
-### `POST /api/auth/register`
-Registers a new user account with an isolated workspace and fresh onboarding state.
-- **Access:** Public. Prevents privilege escalation (`role` cannot be `admin`).
-- **Request Body:**
-  ```json
-  {
-    "email": "farmer@example.com",
-    "password": "minimum6characters",
-    "name": "Ramesh Patel",
-    "role": "farmer", // "farmer" | "agent" | "buyer"
-    "villageOrOrg": "Chhaigaon Makhan, Khandwa"
-  }
-  ```
-- **Response (201 Created):**
-  ```json
-  {
-    "token": "base64Claims.hexSignature",
-    "user": {
-      "id": "USR-101",
-      "email": "farmer@example.com",
-      "name": "Ramesh Patel",
-      "role": "farmer",
-      "villageOrOrg": "Chhaigaon Makhan, Khandwa",
-      "onboardingStatus": "INCOMPLETE",
-      "onboardingStep": 1,
-      "profileCompletion": 25,
-      "isDemoAccount": false,
-      "uidLabel": "UID-9482",
-      "emailVerified": false,
-      "active": true
-    },
-    "personalLots": [],
-    "devDemoMode": false
-  }
-  ```
-
-### `POST /api/auth/login`
-Authenticates existing credentials against salt and scrypt hash.
-- **Access:** Public.
-- **Request Body:** `{ "email": "...", "password": "..." }`
-- **Response (200 OK):** `{ "token": string, "user": UserProfile, "personalLots": CropLot[], "devDemoMode": boolean }`
-- **Errors:** `401 Unauthorized` for bad credentials; `403 Forbidden` if account deactivated.
-
-### `POST /api/auth/firebase-sync`
-Synchronizes Firebase Google Sign-In with server-side RBAC and issues a stateless signed token.
-- **Access:** Public (valid Firebase UID and email required).
-- **Request Body:** `{ uid, email, displayName, role, village, district, state, phoneNumber, preferredLanguage, onboardingStatus, onboardingStep, profileCompletion, emailVerified }`
-- **Response (200 OK):** `{ "token": string, "user": UserProfile, "personalLots": CropLot[], "devDemoMode": boolean }`
+1. **Transport & Tokens:** All requests require the `Authorization: Bearer <token>` header containing a 15-minute HMAC-SHA256 signed stateless session token issued by the server.
+2. **Error Format:** All `/api/v1` endpoints return errors conforming to the standardized envelope:
+   ```json
+   {
+     "error": {
+       "code": "ERROR_CODE_STRING",
+       "message": "Human readable error description",
+       "retryable": false
+     }
+   }
+   ```
+3. **Role-Based Access Control (RBAC):**
+   - Self-assigned `admin` role is strictly forbidden on registration (returns HTTP 403 `FORBIDDEN`).
+   - All `/api/v1/lots/:lotId/*` endpoints enforce farmer ownership (`lot.ownerEmail === user.email || user.role === 'admin'`). Non-owners receive HTTP 403 `FORBIDDEN`. Pre-seeded demonstration lots (`KS-MP-2025-089`, `KS-MP-2025-094`, `KS-MH-2025-210`) are readable by all authenticated personas.
 
 ---
 
-## 2. Crop-to-Cash Workflow Endpoints (`/api/v1/lots`)
+## 2. API Endpoint Matrix
 
-All endpoints in this section use the canonical persistent `lotId` across screening, price discovery, procurement, and settlement.
-
-### `GET /api/v1/lots`
-Retrieves all crop lots owned by the authenticated user (or all lots if `admin`).
-- **Auth:** Required (`farmer`, `agent`, `buyer`, `admin`).
-- **Response (200 OK):** `ExtendedCropLotRecord[]`
-
-### `POST /api/v1/lots`
-Creates a persistent Crop Lot record and initializes its verifiable ledger.
-- **Auth:** Required (`farmer`, `agent`, `admin`).
-- **Request Body:**
-  ```json
-  {
-    "cropName": "Soybean (JS-335)",
-    "variety": "Grade A Certified",
-    "grade": "Grade A",
-    "quantityQuintals": 50,
-    "harvestDate": "Oct 2026",
-    "surveyNumber": "Plot-99/A"
-  }
-  ```
-- **Response (201 Created):** `ExtendedCropLotRecord`
-- **Errors:** `422 Unprocessable Entity` if crop name is missing or quantity $\le 0$.
-
-### `GET /api/v1/lots/:lotId`
-Fetches a specific crop lot by ID.
-- **Auth:** Required (Owner or `admin`).
-- **Response (200 OK):** `ExtendedCropLotRecord`
-- **Errors:** `404 Not Found`, `403 Forbidden` (if not owner or admin).
-
-### `GET /api/v1/lots/:lotId/ledger`
-Retrieves the complete audit trail snapshot for the crop lot.
-- **Auth:** Required (Owner or `admin`).
-- **Response (200 OK):** `CropToCashSnapshot`
-  ```json
-  {
-    "lotId": "KS-MP-2025-089",
-    "events": [
-      {
-        "eventId": "EV-1729194-INIT",
-        "lotId": "KS-MP-2025-089",
-        "type": "READINESS",
-        "occurredAt": "2026-10-18T00:00:00.000Z",
-        "source": "VERIFIED",
-        "verification": "OFFICIAL_REGISTRATION",
-        "summary": "Farmer registration and bank account verified for MSP eligibility.",
-        "payload": { "readinessId": "registration", "ready": true }
-      }
-    ],
-    "readiness": [
-      { "id": "registration", "labelEn": "Farmer & Land Registration", "labelHi": "किसान एवं भूमि पंजीकरण", "ready": true },
-      { "id": "bankAccount", "labelEn": "Aadhaar-Linked Bank Account", "labelHi": "आधार लिंक बैंक खाता", "ready": true },
-      { "id": "landRecord", "labelEn": "Khasra / Land Record Verification", "labelHi": "खसरा / भूमि रिकॉर्ड सत्यापन", "ready": true },
-      { "id": "qualityCheck", "labelEn": "Pre-Procurement Quality / Moisture Check", "labelHi": "खरीद-पूर्व गुणवत्ता / नमी जांच", "ready": false }
-    ],
-    "procurementState": "PLANNED" // "PLANNED" | "VISITED" | "PENDING" | "REJECTED" | "RESCHEDULED" | "NOT_COMPLETED"
-  }
-  ```
-
-### `GET /api/v1/lots/:lotId/quotes`
-Returns comparable market selling quotes across FCI/MSP, local Mandi, and direct buyer.
-- **Auth:** Required (Owner or `admin`).
-- **Response (200 OK):** `SellingQuote[]`
-  ```json
-  [
-    {
-      "option": "FCI_MSP_REFERENCE",
-      "lotId": "KS-MP-2025-089",
-      "pricePerQuintal": 2585,
-      "commodity": "Soybean (JS-335)",
-      "grade": "FAQ Grade A",
-      "market": "Official FCI / State Procurement Depot",
-      "source": "MSP Price Schedule 2025-26",
-      "timestamp": "2026-10-18T00:00:00.000Z",
-      "freshness": "Official government reference rate",
-      "provenance": "DEMO"
-    },
-    {
-      "option": "MANDI",
-      "lotId": "KS-MP-2025-089",
-      "pricePerQuintal": 2300,
-      "commodity": "Soybean (JS-335)",
-      "grade": "FAQ Grade A",
-      "market": "Khandwa APMC Grain Mandi",
-      "source": "APMC E-Mandi Daily Modal Auction",
-      "timestamp": "2026-10-18T00:00:00.000Z",
-      "freshness": "Recent market auction rate",
-      "provenance": "DEMO",
-      "minimumRate": 2200,
-      "maximumRate": 2400,
-      "modalRate": 2300
-    },
-    {
-      "option": "DIRECT_BUYER",
-      "lotId": "KS-MP-2025-089",
-      "pricePerQuintal": 2350,
-      "commodity": "Soybean (JS-335)",
-      "grade": "FAQ Grade A",
-      "market": "ITC Choupal Sagar / FPO Forward Desk",
-      "source": "Registered Institutional Buyer Quotation",
-      "timestamp": "2026-10-18T00:00:00.000Z",
-      "freshness": "Active contract quote",
-      "provenance": "DEMO"
-    }
-  ]
-  ```
-
-### `POST /api/v1/lots/:lotId/comparisons`
-Executes deterministic net return calculation and appends a `COMPARISON` event to the lot ledger.
-- **Auth:** Required (Owner or `admin`).
-- **Deterministic Formula:**
-  $$\text{Net Return} = (\text{accepted quantity} \times \text{price}) - \text{transport} - \text{loading/handling} - \text{fees} - \text{extra visit costs} - \text{expected deductions}$$
-- **Request Body:**
-  ```json
-  {
-    "quantityQtl": 50,
-    "costs": {
-      "fciCosts": 2500,
-      "mandiCosts": 4000,
-      "directCosts": 4000,
-      "extraTripCost": 1000
-    }
-  }
-  ```
-- **Response (200 OK):** `ComparisonResult`
-  ```json
-  {
-    "lotId": "KS-MP-2025-089",
-    "calculationVersion": "v2.0-deterministic",
-    "estimates": [
-      { "option": "FCI_MSP_REFERENCE", "gross": 129250, "deductions": 2500, "net": 126750 },
-      { "option": "MANDI", "gross": 115000, "deductions": 4000, "net": 111000 },
-      { "option": "DIRECT_BUYER", "gross": 117500, "deductions": 4000, "net": 113500 }
-    ],
-    "downsideNet": 112500,
-    "event": {
-      "eventId": "EV-1729194-CMP",
-      "lotId": "KS-MP-2025-089",
-      "type": "COMPARISON",
-      "occurredAt": "2026-10-18T01:00:00.000Z",
-      "source": "ESTIMATED",
-      "verification": "ESTIMATE — deterministic engine v2.0",
-      "summary": "Compared selling options for 50 qtl: FCI ₹126750, Mandi ₹111000, Direct ₹113500",
-      "payload": {
-        "quantityQtl": 50,
-        "fciNet": 126750,
-        "mandiNet": 111000,
-        "directNet": 113500,
-        "downsideNet": 112500
-      }
-    }
-  }
-  ```
-- **Errors:** `422 Unprocessable Entity` if `quantityQtl <= 0` or any cost $< 0$.
-
-### `POST /api/v1/lots/:lotId/readiness`
-Updates document readiness checklist. Only boolean flags (`ready: true/false`) are accepted.
-- **Privacy Rule:** No Aadhaar numbers, bank account numbers, or document scans are ever received or stored.
-- **Request Body:**
-  ```json
-  {
-    "lotId": "KS-MP-2025-089",
-    "type": "READINESS",
-    "source": "VERIFIED",
-    "verification": "OFFICIAL_DOCUMENTS",
-    "summary": "Bank account linked and verified.",
-    "payload": {
-      "readinessId": "bankAccount",
-      "ready": true
-    }
-  }
-  ```
-- **Response (201 Created):** `CropLedgerEvent`
-
-### `POST /api/v1/lots/:lotId/procurement-attempts`
-Records an official procurement visit outcome and updates `procurementState`.
-- **Request Body:**
-  ```json
-  {
-    "lotId": "KS-MP-2025-089",
-    "type": "PROCUREMENT",
-    "source": "DEMO",
-    "verification": "CENTRE_VERIFIED",
-    "summary": "Visited Khandwa FCI depot centre.",
-    "payload": {
-      "outcome": "VISITED", // "PLANNED" | "VISITED" | "PENDING" | "REJECTED" | "RESCHEDULED" | "NOT_COMPLETED"
-      "centreName": "Khandwa FCI Depot"
-    }
-  }
-  ```
-- **Response (201 Created):** `CropLedgerEvent`
-
-### `POST /api/v1/lots/:lotId/sales`
-Finalizes an actual sale transaction and appends the settlement event.
-- **Request Body:**
-  ```json
-  {
-    "lotId": "KS-MP-2025-089",
-    "type": "SALE",
-    "source": "DEMO",
-    "verification": "CONTRACT_SETTLED",
-    "summary": "Direct institutional sale finalized.",
-    "payload": {
-      "buyerName": "ITC Choupal Sagar",
-      "acceptedQty": 50,
-      "netAmount": 113500,
-      "paymentStatus": "FIRST_INSTALLMENT_PAID"
-    }
-  }
-  ```
-- **Response (201 Created):** `CropLedgerEvent`
-
-### `POST /api/v1/lots/:lotId/screenings`
-Model-independent leaf image screening endpoint.
-- **Safety Rule:** Strictly abstains from prescribing synthetic chemical pesticides from an image alone. Always provides safe Krishi Vigyan Kendra (KVK) referral advice.
-- **Request Body:**
-  ```json
-  {
-    "imageFormat": "jpeg", // "jpeg" | "png" | "webp"
-    "imageSizeBytes": 350000,
-    "cropDeclared": "Soybean"
-  }
-  ```
-- **Response (200 OK):** `CropScreeningResult`
-  ```json
-  {
-    "screeningId": "SCR-1729194...",
-    "lotId": "KS-MP-2025-089",
-    "modelName": "KisanSetu-Screening-Adapter",
-    "modelVersion": "v1.0.0-mock-demo",
-    "isMockOrDemo": true,
-    "outcomeCategory": "DISEASE_DETECTED",
-    "topClass": {
-      "className": "Soybean Rust (Phakopsora pachyrhizi)",
-      "confidence": 0.88,
-      "scientificName": "Phakopsora pachyrhizi"
-    },
-    "runnerUp": {
-      "className": "Cercospora Leaf Blight",
-      "confidence": 0.08,
-      "scientificName": "Cercospora kikuchii"
-    },
-    "calibratedConfidence": false,
-    "explanation": {
-      "visualQualityScore": 0.85,
-      "lightingAdequate": true,
-      "blurDetected": false,
-      "diagnosticNotes": "Visual inspection indicates foliar pustules...",
-      "safeExpertReferral": "Automated systems do not prescribe synthetic pesticides from imagery alone. Please consult your Block Agriculture Extension Officer or visit the nearest Krishi Vigyan Kendra (KVK) for an official field agronomy prescription."
-    }
-  }
-  ```
+| Method & Route | Purpose | Auth & RBAC | Request Schema | Response Schema | Validation & Error Behavior | Frontend Consumer | Test Evidence | Classification |
+|---|---|---|---|---|---|---|---|---|
+| `POST /api/auth/register` | Register new user account with hashed password | Public | `{ email, password, name, role, villageOrOrg, preferredLanguage? }` | `{ message, user, token }` | 400 on missing fields; 403 on self-assigned admin; 409 on duplicate email | `src/hooks/useAuth.ts` | `tests/server-auth.test.js` | REAL |
+| `POST /api/auth/login` | Authenticate user credentials & issue signed token | Public | `{ email, password }` | `{ message, user, token }` | 400 on empty inputs; 401 on invalid credentials | `src/hooks/useAuth.ts` | `tests/server-auth.test.js` | REAL |
+| `POST /api/auth/admin-login` | Authenticate platform administrator with master key | Public | `{ email, adminKey }` | `{ message, user, token }` | 401 on invalid master credentials | `src/components/AdminLoginDialog.tsx` | Manual & unit inspection | REAL |
+| `POST /api/auth/firebase-sync` | Synchronize client Firebase identity to server profile | Public | `{ uid, email, displayName, role?, preferredLanguage?, villageOrOrg? }` | `{ message, user, token }` | Issues token matching Firebase UID | `src/hooks/useAuth.ts` | Source inspection | REAL |
+| `GET /api/auth/session` | Validate session token & return active user identity | Bearer Token | None | `{ authenticated: true, user }` | 401 on missing, expired, or tampered token | `src/hooks/useAuth.ts` | `tests/server-session.test.js`, `server-auth.test.js` | REAL |
+| `POST /api/auth/logout` | Client sign-out confirmation | Bearer Token | None | `{ message: "Logged out successfully" }` | 200 OK | `src/hooks/useAuth.ts` | `tests/server-auth.test.js` | REAL |
+| `GET /api/profile` | Retrieve user profile & personal lots | Bearer Token (`requireUser`) | None | `{ user, personalLots, demoLots }` | 401 on unauthorized | `src/context/KisanContext.tsx` | Live server inspection | REAL |
+| `PUT /api/profile` | Update profile fields & onboarding status | Bearer Token (`requireUser`) | `{ displayName?, phone?, villageOrOrg?, onboardingStatus?, preferredLanguage? }` | `{ user }` | 401 on unauthorized; sanitizes role | `src/context/KisanContext.tsx`, `OnboardingWizard.tsx` | Live server inspection | REAL |
+| `POST /api/profile/crops` | Create personal crop lot from dashboard | Bearer Token (`requireUser`) | `{ cropName, variety?, quantityQuintals, ... }` | `{ lot, personalLots }` | 400 on missing cropName or non-positive quantity | `src/context/KisanContext.tsx` | `tests/server-auth.test.js` | REAL |
+| `GET /api/v1/lots` | List all crop lots accessible to user | Bearer Token (`requireUserV1`) | None | `ExtendedCropLotRecord[]` | Returns user's lots + pre-seeded demo lots | `src/services/cropToCashAdapter.ts` | `tests/api-v1-integration.test.js` (Step 3) | REAL |
+| `POST /api/v1/lots` | Create canonical crop lot in v1 format | Bearer Token (`requireUserV1`) | `{ cropName, variety?, grade?, quantityQuintals, harvestDate?, surveyNumber? }` | `ExtendedCropLotRecord` (HTTP 201) | 400 on missing cropName; validates positive quantity | `src/services/cropToCashAdapter.ts` | `tests/api-v1-integration.test.js` (Step 2) | REAL |
+| `GET /api/v1/lots/:lotId` | Retrieve single crop lot with ownership check | Bearer Token (`requireUserV1`) | None | `ExtendedCropLotRecord` | 404 if missing; 403 if not owner and non-admin | `src/services/cropToCashAdapter.ts` | `tests/api-v1-integration.test.js` (Step 3, 11) | REAL |
+| `PUT /api/v1/lots/:lotId` | Update mutable fields on owned crop lot | Bearer Token (`requireUserV1`) | `{ variety?, grade?, quantityQuintals?, harvestDate?, surveyNumber? }` | `ExtendedCropLotRecord` | 400 on non-positive quantity; 403 if not owner | `src/services/cropToCashAdapter.ts` | `tests/batch2-journeys.test.js` (Journey 2) | REAL |
+| `DELETE /api/v1/lots/:lotId` | Archive / delete owned crop lot | Bearer Token (`requireUserV1`) | None | `{ success: boolean, message: string, lotId: string }` | 400 on reserved demo lot; 403 if not owner | `src/services/cropToCashAdapter.ts` | `tests/batch2-journeys.test.js` (Journey 2) | REAL |
+| `GET /api/v1/lots/:lotId/ledger` | Retrieve append-only ledger snapshot & events | Bearer Token (`requireUserV1`) | None | `CropToCashSnapshot` | 404 if missing; 403 if not owner | `src/services/cropToCashAdapter.ts` (`fetchLotLedger`) | `tests/api-v1-integration.test.js` (Step 9) | REAL |
+| `GET /api/v1/lots/:lotId/quotes` | Retrieve selling quotes across 3 channels | Bearer Token (`requireUserV1`) | None | `SellingQuote[]` | 404 if missing; quotes carry `provenance: 'DEMO'` | `src/services/cropToCashAdapter.ts` (`fetchQuotes`) | `tests/api-v1-integration.test.js` (Step 4) | DEMO |
+| `POST /api/v1/lots/:lotId/comparisons` | Deterministic 4-number return calculation | Bearer Token (`requireUserV1`) | `{ quotes, transportCost?, loadingCost?, handlingCost?, commissionRate?, moistureDeductionRate? }` | `ComparisonResult` | 422 if inputs invalid; appends COMPARISON event | `src/services/cropToCashAdapter.ts` (`recordComparison`) | `tests/api-v1-integration.test.js` (Step 5), `crop-to-cash-adapter.test.js` | REAL |
+| `POST /api/v1/lots/:lotId/readiness` | Record boolean document readiness items | Bearer Token (`requireUserV1`) | `{ readiness: CropReadinessItem[] }` | `CropLedgerEvent` | Rejects raw Aadhaar/PII fields with 400; updates readiness | `src/services/cropToCashAdapter.ts` (`recordReadiness`) | `tests/api-v1-integration.test.js` (Step 6) | REAL |
+| `POST /api/v1/lots/:lotId/procurement-attempts` | Record procurement visit & acceptance status | Bearer Token (`requireUserV1`) | `{ state, reason, centreId?, centreName?, isCentreVerified? }` | `CropLedgerEvent` | 422 on invalid `ProcurementState`; appends event | `src/services/cropToCashAdapter.ts` (`recordProcurementAttempt`) | `tests/api-v1-integration.test.js` (Step 7) | REAL |
+| `POST /api/v1/lots/:lotId/sales` | Record farmer-reported sale & payment status | Bearer Token (`requireUserV1`) | `{ quantityQtl, agreedPricePerQtl, deductions, actualNet?, paymentStatus }` | `CropLedgerEvent` | Validates positive numbers; computes variance; appends event | `src/services/cropToCashAdapter.ts` (`recordSale`) | `tests/api-v1-integration.test.js` (Step 8), `tests/c2c-integration.test.js` | REAL |
+| `POST /api/v1/lots/:lotId/screenings` | Leaf image quality check & safe KVK advisory | Bearer Token (`requireUserV1`) | `{ imageFormat, imageSizeBytes, cropDeclared? }` | `CropScreeningResult` | Rejects >10MB with 422; flags `isMockOrDemo: true`; zero chemical advice | `src/pages/CropToCashPage.tsx` | `tests/api-v1-integration.test.js` (Step 12), `crop-to-cash.test.js` | DEMO |
+| `GET /api/admin/dashboard` | Administrative metrics, user directory, all lots | Bearer Token (`requireAdmin`) | None | `{ stats, users, lots, activity }` | 403 Forbidden for non-admin | `src/pages/AdminDashboardPage.tsx` | `tests/adversarial-security.test.js` (Vector 4) | REAL |
+| `POST / PUT /api/admin/users/:userId/role` | Modify user assigned role | Bearer Token (`requireAdmin`) | `{ role: 'farmer' \| 'agent' \| 'buyer' \| 'admin', reason }` | `{ user, auditLogs }` | 403 Forbidden for non-admin; 400 on missing audit reason or invalid role | `src/pages/AdminDashboardPage.tsx` | `tests/adversarial-security.test.js` (Vector 4 & 6) | REAL |
+| `POST / PUT /api/admin/users/:userId/status` | Modify user status (activate / deactivate) | Bearer Token (`requireAdmin`) | `{ active: boolean, reason }` | `{ user, auditLogs }` | 403 Forbidden for non-admin; cannot deactivate self | `src/pages/AdminDashboardPage.tsx` | `tests/adversarial-security.test.js` | REAL |
+| `POST / PUT /api/admin/lots/:lotId/verification` | Set lot official verification status | Bearer Token (`requireAdmin`) | `{ status: 'VERIFIED' \| 'REJECTED' \| 'FLAGGED', reason }` | `{ lotId, override, auditLogs }` | 403 Forbidden for non-admin; min 5 char reason required | `src/pages/AdminDashboardPage.tsx` | Live server inspection | REAL |
+| `GET /api/admin/pilot-analytics` | Aggregated pilot performance & variance analytics | Bearer Token | None | `{ totalLotsTracked, totalQuantityQuintals, avgVariance, channelDistribution }` | Privacy-safe: zero personal PII returned | `server.ts` | `tests/c2c-integration.test.js` | REAL |
+| `POST /api/demo/reset` | Safe reset of in-memory demo data | Bearer Token | None | `{ message: "Demo lots reset successfully" }` | Only resets seeded demo lots; does not delete user accounts | `src/context/KisanContext.tsx` | `tests/c2c-integration.test.js` | REAL |
 
 ---
 
-## 3. Administrative Pilot Analytics
+The authenticated `GET /api/v1/lots/:lotId/quotes` response uses `Cache-Control: private, max-age=30, must-revalidate` and `Vary: Authorization`. This permits only per-browser caching for 30 seconds; ownership is checked before responding, and different authorization tokens use separate cache entries.
 
-### `GET /api/admin/pilot-analytics`
-Aggregated metrics for FPO/Mandi administrators.
-- **Auth:** Required (`admin` role enforced on server).
-- **Response (200 OK):**
-  ```json
-  {
-    "reportingPeriod": "Kharif-Rabi Pilot 2026",
-    "sampleSizeN": 1,
-    "totalProcurementAttempts": 1,
-    "attemptsByOutcome": { "ACCEPTED": 1, "REJECTED": 0, "PENDING": 0, "RESCHEDULED": 0, "NOT_COMPLETED": 0 },
-    "financialAggregates": { "totalGrossSalesINR": 117500, "totalNetSalesINR": 113500 },
-    "paymentStatusDistribution": { "FIRST_INSTALLMENT_PAID": 1 },
-    "privacySafeNote": "Aggregated analytics; individual Aadhaar or raw personal records are never recorded or exposed."
-  }
-  ```
+## 3. Legacy `/api/c2c` Compatibility Endpoints
 
----
+The following routes are preserved in `server.ts` for backward compatibility with prototype test suites:
+- `POST /api/c2c/lots`
+- `GET /api/c2c/lots/:lotId`
+- `POST /api/c2c/lots/:lotId/screening`
+- `POST /api/c2c/lots/:lotId/estimate`
+- `POST /api/c2c/lots/:lotId/procurement-attempt`
+- `POST /api/c2c/lots/:lotId/sale`
 
-## 4. Environment & Adapter Operational Notes
-
-- In local development and automated CI, `/api/v1` routes operate with in-memory transaction state keyed by `lotId`.
-- The frontend adapter (`src/services/cropToCashAdapter.ts`) supports dual operation:
-  - When `VITE_CROP_TO_CASH_API_ENABLED=true`, it communicates with the live REST `/api/v1` routes.
-  - When unset or `false`, it utilizes `createCropToCashMockAdapter` with in-memory state.
-- In both modes, inference results are explicitly labeled as `DEMO`, and strict privacy protections (no Aadhaar, passbook, or sensitive ID scans) are enforced.
-
+All new client code and UI components MUST use the `/api/v1` routes documented in Section 2.

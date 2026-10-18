@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AppRoute, useKisan } from '../context/KisanContext';
 import { KISAN_LOGO_URL } from '../data/kisanData';
+import { useAuth } from '../hooks/useAuth';
 import { UserRole } from '../types/kisan';
 import { TalkBackBar } from './TalkBackBar';
 
@@ -77,11 +78,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
     t,
     toast,
     clearToast,
-    user,
-    logout,
-    verifyEmailWithServer,
-    setAdminDialogOpen,
+    personalLots,
   } = useKisan();
+  const { user, logout, verifyEmailWithServer, updateUserProfile } = useAuth();
 
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false);
@@ -92,6 +91,11 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
     PRIMARY_NAV_ITEMS.find((item) => item.route === route) ||
     PRIMARY_NAV_ITEMS[0];
 
+  const isDemoUser = Boolean(user?.isDemoAccount);
+  const personalLocation =
+    [user?.village, user?.district, user?.state].filter(Boolean).join(', ') ||
+    'Personal Workspace';
+
   const roleMetadata: Record<
     UserRole,
     { titleEn: string; titleHi: string; personName: string; subtitle: string }
@@ -99,20 +103,32 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
     farmer: {
       titleEn: 'Farmer / Family Proxy',
       titleHi: 'किसान / पारिवारिक प्रतिनिधि',
-      personName: 'Ramesh Patel / Suresh Kumar',
-      subtitle: 'Grower & Authorized Proxy (Khandwa)',
+      personName: isDemoUser
+        ? 'Rameshwar Patidar (Demo Farmer)'
+        : user?.name || 'Farmer Workspace',
+      subtitle: isDemoUser
+        ? 'Grower & Authorized Proxy (Khandwa)'
+        : `Track crops, advisories & buyer offers • ${personalLocation}`,
     },
     agent: {
       titleEn: 'Village Agent / Arhtiya Partner',
       titleHi: 'ग्रामीण एजेंट / आढ़तिया साथी',
-      personName: 'Dr. S. R. Raman (Agent #402)',
-      subtitle: 'Senior Mandi Registrar • Khandwa Hub',
+      personName: isDemoUser
+        ? 'Vikram Singh Chouhan (Demo Agent)'
+        : user?.name || 'Village Agent Workspace',
+      subtitle: isDemoUser
+        ? 'Senior Mandi Registrar • Khandwa Hub'
+        : `Coordinate farmer onboarding & pickups • ${personalLocation}`,
     },
     buyer: {
       titleEn: 'Institutional Buyer',
       titleHi: 'संस्थागत खरीदार',
-      personName: 'ITC Agri / Adani Procurement Desk',
-      subtitle: 'Corporate Off-Take & Quality Audit',
+      personName: isDemoUser
+        ? 'AgriCorp Procurement Desk (Demo Buyer)'
+        : user?.name || 'Buyer Workspace',
+      subtitle: isDemoUser
+        ? 'Corporate Off-Take & Quality Audit'
+        : `Inspect crop lots, quality & offers • ${personalLocation}`,
     },
   };
 
@@ -216,12 +232,14 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
 
               <div
                 role="group"
-                aria-label="Language switcher"
+                aria-label={t('Language switcher', 'भाषा चयनकर्ता')}
                 className="flex items-center bg-[#E8EAF6] rounded p-0.5 border border-[#000080]/20"
               >
                 <button
                   type="button"
                   onClick={() => setLanguage('en')}
+                  aria-pressed={language === 'en'}
+                  aria-label={t('Switch language to English', 'अंग्रेज़ी भाषा चुनें')}
                   className={`px-2.5 py-1 text-xs rounded font-bold min-h-[32px] transition-colors ${
                     language === 'en'
                       ? 'bg-[#000080] text-white'
@@ -233,6 +251,8 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
                 <button
                   type="button"
                   onClick={() => setLanguage('hi')}
+                  aria-pressed={language === 'hi'}
+                  aria-label={t('Switch language to Hindi', 'हिंदी भाषा चुनें')}
                   className={`px-2.5 py-1 text-xs rounded font-bold font-hindi min-h-[32px] transition-colors ${
                     language === 'hi'
                       ? 'bg-[#000080] text-white'
@@ -245,7 +265,10 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
 
               <button
                 type="button"
-                aria-label="User Profile and Role Settings"
+                aria-label={t(
+                  'User Profile and Role Settings',
+                  'उपयोगकर्ता प्रोफ़ाइल और भूमिका सेटिंग्स'
+                )}
                 onClick={() => setProfileModalOpen(true)}
                 className="w-10 h-10 rounded-full bg-[#000080] text-white flex items-center justify-center shrink-0 hover:bg-[#00003C]"
               >
@@ -385,8 +408,33 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
 
             <button
               type="button"
+              onClick={() => navigate('/profile')}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded text-left transition-colors min-h-[44px] font-bold border ${
+                route === '/profile'
+                  ? 'bg-[#000080] text-white border-[#000080]'
+                  : 'bg-white text-[#000080] hover:bg-[#E8EAF6] border-[#000080]/25'
+              }`}
+              title="Personal Profile & Workspace Preferences"
+            >
+              <span className="material-symbols-outlined text-[20px] shrink-0">
+                manage_accounts
+              </span>
+              {sidebarOpen && (
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-extrabold uppercase tracking-wider truncate">
+                    My Profile
+                  </span>
+                  <span className="text-[10px] font-semibold truncate">
+                    Preferences &amp; Security
+                  </span>
+                </div>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => navigate('/showcase')}
-              className="flex items-center gap-3 px-3 py-2.5 rounded text-left transition-colors min-h-[44px] bg-[#E8F5E9] text-[#006B3C] hover:bg-[#138808] hover:text-white font-bold border border-[#138808]/30"
+              className="mt-1 flex items-center gap-3 px-3 py-2.5 rounded text-left transition-colors min-h-[44px] bg-[#E8F5E9] text-[#006B3C] hover:bg-[#138808] hover:text-white font-bold border border-[#138808]/30"
               title="Multi-Device Presentation Showcase"
             >
               <span className="material-symbols-outlined text-[20px] shrink-0">
@@ -404,35 +452,32 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
               )}
             </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                user?.role === 'admin'
-                  ? navigate('/admin')
-                  : setAdminDialogOpen(true)
-              }
-              className={`mt-1 flex items-center gap-3 px-3 py-2.5 rounded text-left transition-colors min-h-[44px] font-bold border ${
-                route === '/admin'
-                  ? 'bg-[#000080] text-white border-[#000080]'
-                  : 'bg-[#E8EAF6] text-[#000080] hover:bg-[#000080] hover:text-white border-[#000080]/30'
-              }`}
-              title="Administrator Console (Ctrl + Shift + A)"
-            >
-              <span className="material-symbols-outlined text-[20px] shrink-0">
-                admin_panel_settings
-              </span>
-              {sidebarOpen && (
-                <div className="flex flex-col min-w-0">
-                  <span className="text-xs font-extrabold uppercase tracking-wider truncate">
-                    Admin Console
-                  </span>
-                  <span className="text-[10px] font-semibold truncate">
-                    Ctrl + Shift + A
-                  </span>
-                </div>
-              )}
-            </button>
-
+            {user?.role === 'admin' && (
+              <button
+                type="button"
+                onClick={() => navigate('/admin')}
+                className={`mt-1 flex items-center gap-3 px-3 py-2.5 rounded text-left transition-colors min-h-[44px] font-bold border ${
+                  route === '/admin'
+                    ? 'bg-[#000080] text-white border-[#000080]'
+                    : 'bg-[#E8EAF6] text-[#000080] hover:bg-[#000080] hover:text-white border-[#000080]/30'
+                }`}
+                title={t('Administrator Console', 'प्रशासक कंसोल')}
+              >
+                <span className="material-symbols-outlined text-[20px] shrink-0">
+                  admin_panel_settings
+                </span>
+                {sidebarOpen && (
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs font-extrabold uppercase tracking-wider truncate">
+                      {t('Admin Console', 'प्रशासक कंसोल')}
+                    </span>
+                    <span className="text-[10px] font-semibold truncate">
+                      {t('Authorized Session', 'अधिकृत सत्र')}
+                    </span>
+                  </div>
+                )}
+              </button>
+            )}
             {/* Live SPO Snowy Procurement Companion Link */}
             <a
               href="https://spo-snowy.vercel.app"
@@ -474,18 +519,20 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
             <div className="px-4 pt-2">
               <div className="p-3 rounded-lg bg-[#E8EAF6] border border-[#000080]/20">
                 <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#000080] block">
-                  {t('ACTIVE ROLE CONTEXT', 'सक्रिय भूमिका')}
+                  {t('ACTIVE WORKSPACE', 'सक्रिय कार्यक्षेत्र')}
                 </span>
                 <span className="text-xs font-bold text-black block mt-0.5">
                   {language === 'hi'
                     ? activeRoleMeta.titleHi
                     : activeRoleMeta.titleEn}
                 </span>
-                <span className="text-[11px] font-medium text-black block mt-0.5">
-                  {activeRoleMeta.personName}
+                <span className="text-[11px] font-extrabold text-[#000080] block mt-0.5 truncate">
+                  {user ? user.name : activeRoleMeta.personName}
                 </span>
-                <p className="text-[10px] text-[#006B3C] font-bold mt-1.5">
-                  Demo Prototype State • Not Server Auth
+                <p className="text-[10px] text-[#006B3C] font-bold mt-1">
+                  {user?.isDemoAccount
+                    ? 'Demo Account • Sample Data'
+                    : 'Personal Authenticated Workspace'}
                 </p>
               </div>
             </div>
@@ -612,39 +659,20 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
         {/* DESKTOP TOP HEADER BAR (lg+) */}
         <header className="hidden lg:flex sticky top-0 z-30 h-16 bg-white border-b border-[#000080]/20 px-6 items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#E8F5E9] border border-[#138808]/30 rounded">
-              <span className="material-symbols-outlined text-[#138808] text-[15px]">
-                check_circle
+            <span className="text-sm font-extrabold text-[#000080]">
+              {user?.name ? `Hello, ${user.name}` : 'Welcome to Kisan-SPO'}
+            </span>
+            <span className="px-2.5 py-0.5 bg-[#E8F5E9] border border-[#138808]/30 rounded text-[11px] text-[#006B3C] font-extrabold">
+              {activeRoleMeta.titleEn}
+            </span>
+            {user?.isDemoAccount && (
+              <span className="px-2.5 py-0.5 bg-[#FFDCC2] border border-[#FF9933] rounded text-[10px] text-[#371A00] font-extrabold uppercase tracking-wider">
+                Demo Account • Sample Data
               </span>
-              <span className="text-[11px] text-[#006B3C] font-extrabold tracking-wide">
-                e-NAM GATEWAY READY (DEMO)
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#E8EAF6] border border-[#000080]/20 rounded">
-              <span className="text-[11px] text-[#000080] font-extrabold">
-                AgriStack v2.4
-              </span>
-              <span className="text-[11px] text-black font-semibold">
-                | STACK BLUEPRINT
-              </span>
-            </div>
-            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 bg-[#FFDCC2] border border-[#FF9933] rounded">
-              <span className="text-[11px] text-[#371A00] font-extrabold tracking-wide">
-                MANDI LOT INSPECTION DISPATCH
-              </span>
-            </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#E8F5E9] border border-[#138808]/30 text-black">
-              <span className="material-symbols-outlined text-[16px] text-[#138808]">
-                lock_clock
-              </span>
-              <span className="text-[11px] font-bold font-tabular">
-                SESSION: 18:42
-              </span>
-            </div>
-
             <div
               role="group"
               aria-label="Language Selector"
@@ -676,14 +704,16 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
 
             <button
               type="button"
-              aria-label="Open Operational Alerts"
+              aria-label="Open Workspace Notifications"
               onClick={() => setNotificationsOpen(true)}
               className="w-10 h-10 rounded border border-[#000080]/20 flex items-center justify-center text-[#000080] hover:bg-[#E8EAF6] relative"
             >
               <span className="material-symbols-outlined text-[20px]">
                 notifications
               </span>
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-[#FF9933] border border-black" />
+              {(user?.isDemoAccount || personalLots.length > 0) && (
+                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-[#FF9933] border border-black" />
+              )}
             </button>
 
             <button
@@ -831,6 +861,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
                     type="button"
                     onClick={() => {
                       setRole(r);
+                      if (user) {
+                        void updateUserProfile({ role: r });
+                      }
                       setProfileModalOpen(false);
                     }}
                     className={`p-3 rounded-lg border-2 text-left flex items-center justify-between transition-colors ${
@@ -912,17 +945,29 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
                 Sign Out
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setProfileModalOpen(false);
-                    setAdminDialogOpen(true);
+                    navigate('/profile');
                   }}
-                  className="px-3.5 py-2.5 rounded bg-white text-[#000080] border-2 border-[#000080] text-xs font-extrabold"
+                  className="px-3.5 py-2.5 rounded bg-[#E8EAF6] text-[#000080] border border-[#000080] text-xs font-extrabold"
                 >
-                  Admin Access
+                  {t('My Profile', 'मेरी प्रोफ़ाइल')}
                 </button>
+                {user?.role === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfileModalOpen(false);
+                      navigate('/admin');
+                    }}
+                    className="px-3.5 py-2.5 rounded bg-white text-[#000080] border-2 border-[#000080] text-xs font-extrabold"
+                  >
+                    {t('Admin Console', 'प्रशासक कंसोल')}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -931,14 +976,14 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
                   }}
                   className="px-3.5 py-2.5 rounded bg-[#000080] text-white text-xs font-bold"
                 >
-                  5-Device Showcase
+                  {t('5-Device Showcase', '5-स्क्रीन शोकेस')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setProfileModalOpen(false)}
                   className="px-4 py-2.5 rounded bg-[#138808] text-white text-xs font-bold"
                 >
-                  Done
+                  {t('Done', 'पूर्ण')}
                 </button>
               </div>
             </div>
@@ -946,7 +991,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
         </div>
       )}
 
-      {/* NOTIFICATIONS MODAL */}
+      {/* NOTIFICATIONS MODAL (State-Driven: No fake alerts on brand-new accounts) */}
       {notificationsOpen && (
         <div
           role="dialog"
@@ -960,7 +1005,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
                 id="notif-modal-title"
                 className="text-base font-extrabold text-[#000080]"
               >
-                Operational Alerts &amp; Statutory Notices (Sample)
+                {user?.isDemoAccount
+                  ? 'Demo Operational Alerts (Sample Data)'
+                  : 'Your Workspace Notifications'}
               </h2>
               <button
                 type="button"
@@ -971,40 +1018,68 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
                 ✕
               </button>
             </div>
-            <div className="flex flex-col gap-2 text-xs">
-              <div className="p-3 rounded bg-[#FF9933] text-black border border-black">
-                <span className="font-extrabold block uppercase">
-                  PHI Waiting Period Active (8 Days Left)
+
+            {user?.isDemoAccount ? (
+              <div className="flex flex-col gap-2 text-xs">
+                <div className="p-3 rounded bg-[#FF9933] text-black border border-black">
+                  <span className="font-extrabold block uppercase">
+                    [SAMPLE] PHI Waiting Period Active (8 Days Left)
+                  </span>
+                  <p className="mt-0.5 font-semibold">
+                    Demo Specimen #0942: Chemical fungicide application blocked
+                    prior to 18 Oct 2026 harvest.
+                  </p>
+                </div>
+                <div className="p-3 rounded bg-[#E8F5E9] text-black border border-[#138808]">
+                  <span className="font-extrabold text-[#138808] block uppercase">
+                    [SAMPLE] 50% Instant UPI Escrow Credited
+                  </span>
+                  <p className="mt-0.5 font-semibold">
+                    Demo TXN #99482: ₹26,875 released on Weigh-Slip #A-14
+                    sign-off.
+                  </p>
+                </div>
+              </div>
+            ) : personalLots.length > 0 ? (
+              <div className="flex flex-col gap-2 text-xs">
+                {personalLots.map((lot) => (
+                  <div
+                    key={lot.id}
+                    className="p-3 rounded bg-[#E8F5E9] text-black border border-[#138808]"
+                  >
+                    <span className="font-extrabold text-[#138808] block uppercase">
+                      Crop Lot {lot.shortCode} Registered
+                    </span>
+                    <p className="mt-0.5 font-semibold">
+                      {lot.quantityQuintals} Quintals of {lot.cropName} (
+                      {lot.variety}) • Status:{' '}
+                      {lot.verificationStatus.replace(/_/g, ' ')}.
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-[#E8EAF6]/60 border border-[#000080]/20 text-center space-y-1.5 text-xs">
+                <span className="material-symbols-outlined text-[#000080] text-[24px]">
+                  notifications_none
                 </span>
-                <p className="mt-0.5 font-semibold">
-                  Specimen #0942: Chemical fungicide application blocked prior
-                  to 18 Oct 2026 harvest.
+                <p className="font-extrabold text-[#000080]">
+                  No notifications yet
+                </p>
+                <p className="text-black font-medium">
+                  Alerts for your crop lots, buyer bids, pickup schedules, and
+                  payment milestones will appear here once you add your first
+                  crop.
                 </p>
               </div>
-              <div className="p-3 rounded bg-[#E8F5E9] text-black border border-[#138808]">
-                <span className="font-extrabold text-[#138808] block uppercase">
-                  50% Instant UPI Escrow Credited
-                </span>
-                <p className="mt-0.5 font-semibold">
-                  TXN #99482: ₹26,875 released on Weigh-Slip #A-14 sign-off.
-                </p>
-              </div>
-              <div className="p-3 rounded bg-[#E8EAF6] text-black border border-[#000080]">
-                <span className="font-extrabold text-[#000080] block uppercase">
-                  Cluster Pooling Dispatch Ready
-                </span>
-                <p className="mt-0.5 font-semibold">
-                  Truck #MP-12-GA-4482 scheduled for 06:00 AM pickup across 3
-                  pooled farmers.
-                </p>
-              </div>
-            </div>
+            )}
+
             <button
               type="button"
               onClick={() => setNotificationsOpen(false)}
               className="w-full py-2.5 rounded bg-[#000080] text-white text-xs font-bold mt-1"
             >
-              Close Alerts
+              Close Notifications
             </button>
           </div>
         </div>

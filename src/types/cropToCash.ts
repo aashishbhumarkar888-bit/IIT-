@@ -10,6 +10,7 @@ export type SellingOptionKind = 'FCI_MSP_REFERENCE' | 'MANDI' | 'DIRECT_BUYER';
 export type ProcurementState =
   | 'PLANNED'
   | 'VISITED'
+  | 'ACCEPTED'
   | 'PENDING'
   | 'ACCEPTED'
   | 'REJECTED'
