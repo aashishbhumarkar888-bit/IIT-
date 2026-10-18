@@ -17,6 +17,8 @@ import {
   SellingQuote,
 } from '../types/cropToCash';
 import { formatINR } from '../services/kisanService';
+import { SpeakButton } from '../components/SpeakButton';
+import { SpoProcurementBridge } from '../components/SpoProcurementBridge';
 
 type WorkflowTab = 'detect' | 'compare' | 'complete';
 
@@ -259,9 +261,14 @@ export const CropToCashPage: React.FC = () => {
     <div className="mx-auto w-full max-w-6xl px-4 py-5 text-black sm:px-6">
       <header className="flex flex-col gap-3 border-b-2 border-[#000080]/20 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <span className="text-xs font-extrabold uppercase tracking-wider text-[#006B3C]">
-            KisanSetu AI · Crop-to-Cash Ledger
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-extrabold uppercase tracking-wider text-[#006B3C]">
+              KisanSetu AI · Crop-to-Cash Ledger
+            </span>
+            <span className="rounded-full bg-[#138808]/15 px-2.5 py-0.5 text-[10px] font-black text-[#006B3C] border border-[#138808]/30">
+              {t('Delhi Pilot: Narela & Najafgarh', 'दिल्ली पायलट: नरेला एवं नजफगढ़')}
+            </span>
+          </div>
           <h1 className="mt-1 text-2xl font-extrabold text-[#000080] sm:text-3xl">
             {t('One crop lot. One connected journey.', 'एक फसल लॉट। एक जुड़ी हुई यात्रा।')}
           </h1>
@@ -270,16 +277,28 @@ export const CropToCashPage: React.FC = () => {
             <span className="font-mono">{currentLot.id}</span>
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setSelectedLotId(currentLot.id);
-            navigate('/crop-passport');
-          }}
-          className="min-h-11 rounded-lg border-2 border-[#000080]/30 px-4 py-2 text-sm font-bold text-[#000080] hover:bg-[#E8EAF6]"
-        >
-          {t('Open this lot’s Crop Passport', 'इस लॉट का फसल पासपोर्ट खोलें')}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <SpeakButton
+            text={
+              language === 'hi'
+                ? `किसान-सेतु फसल से भुगतान लेज़र। फसल ${currentLot.cropName}, मात्रा ${currentLot.quantityQuintals} क्विंटल, लॉट आईडी ${currentLot.id}। नरेला और नजफगढ़ पायलट हब। चरण एक: पत्ती की जाँच, चरण दो: तीन विकल्पों की शुद्ध मुनाफा तुलना, चरण तीन: खरीद पूर्ण करना।`
+                : `KisanSetu Crop to Cash Ledger. Crop ${currentLot.cropName}, quantity ${currentLot.quantityQuintals} quintals, lot ID ${currentLot.id}. Narela and Najafgarh pilot hub. Stage one: Leaf screening, stage two: Three-channel net return comparison, stage three: Complete procurement and escrow payment.`
+            }
+            lang={language}
+            label={t('Listen', 'सुनें')}
+            size="md"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedLotId(currentLot.id);
+              navigate('/crop-passport');
+            }}
+            className="min-h-11 rounded-lg border-2 border-[#000080]/30 px-4 py-2 text-sm font-bold text-[#000080] hover:bg-[#E8EAF6]"
+          >
+            {t('Open this lot’s Crop Passport', 'इस लॉट का फसल पासपोर्ट खोलें')}
+          </button>
+        </div>
       </header>
 
       <div
@@ -431,11 +450,32 @@ export const CropToCashPage: React.FC = () => {
                           {screeningResult.outcomeCategory.replace(/_/g, ' ')}
                         </h3>
                       </div>
-                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900 border border-amber-300">
-                        {screeningResult.isMockOrDemo
-                          ? t('DEMO INFERENCE', 'डेमो निष्कर्ष')
-                          : t('PRODUCTION ADAPTER', 'उत्पादन एडेप्टर')}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <SpeakButton
+                          text={
+                            language === 'hi'
+                              ? `छवि जाँच परिणाम: ${screeningResult.outcomeCategory.replace(/_/g, ' ')}। स्थिति: ${
+                                  screeningResult.topClass?.classNameHi ||
+                                  screeningResult.topClass?.className ||
+                                  'सामान्य'
+                                }। सुरक्षित विशेषज्ञ सलाह: ${
+                                  screeningResult.explanation.safeExpertReferral
+                                }`
+                              : `Screening result: ${screeningResult.outcomeCategory.replace(/_/g, ' ')}. Condition: ${
+                                  screeningResult.topClass?.className || 'Normal'
+                                }. Safe referral advice: ${
+                                  screeningResult.explanation.safeExpertReferral
+                                }`
+                          }
+                          lang={language}
+                          label={t('Listen', 'सुनें')}
+                        />
+                        <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900 border border-amber-300">
+                          {screeningResult.isMockOrDemo
+                            ? t('DEMO INFERENCE', 'डेमो निष्कर्ष')
+                            : t('PRODUCTION ADAPTER', 'उत्पादन एडेप्टर')}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Uncalibrated Inference Disclaimer */}
@@ -643,11 +683,21 @@ export const CropToCashPage: React.FC = () => {
                         className="rounded-xl border-2 border-[#000080]/20 p-4"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
-                          <h3 className="font-extrabold text-[#000080]">
-                            {language === 'hi'
-                              ? OPTION_LABELS[quote.option].hi
-                              : OPTION_LABELS[quote.option].en}
-                          </h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-extrabold text-[#000080]">
+                              {language === 'hi'
+                                ? OPTION_LABELS[quote.option].hi
+                                : OPTION_LABELS[quote.option].en}
+                            </h3>
+                            <SpeakButton
+                              text={
+                                language === 'hi'
+                                  ? `${OPTION_LABELS[quote.option].hi}। भाव ${formatINR(quote.pricePerQuintal)} प्रति क्विंटल। कुल बिक्री ${formatINR(result.gross)}, कुल खर्च ${formatINR(result.deductions)}। अनुमानित शुद्ध लाभ: ${formatINR(result.net)}।`
+                                  : `${OPTION_LABELS[quote.option].en}. Rate ${formatINR(quote.pricePerQuintal)} per quintal. Gross ${formatINR(result.gross)}, costs ${formatINR(result.deductions)}. Estimated net return: ${formatINR(result.net)}.`
+                              }
+                              lang={language}
+                            />
+                          </div>
                           <span className="rounded bg-[#FFF4E8] px-2 py-1 text-xs font-extrabold text-[#371A00]">
                             {quote.provenance} · {quote.freshness}
                           </span>
@@ -681,15 +731,25 @@ export const CropToCashPage: React.FC = () => {
 
                 {displayedDownside !== null && (
                   <div className="rounded-lg border-2 border-[#FF9933] bg-[#FFF4E8] p-3 text-sm font-bold text-[#371A00]">
-                    <p>
-                      {t(
-                        'Downside Scenario (FCI Rejection Fallback + ₹1,000 Extra Trip):',
-                        'डाउनसाइड परिदृश्य (FCI अस्वीकृति पर सीधी बिक्री + ₹1,000 अतिरिक्त फेरा):'
-                      )}{' '}
-                      <span className="text-base font-black">
-                        {formatINR(displayedDownside)}
-                      </span>
-                    </p>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p>
+                        {t(
+                          'Downside Scenario (FCI Rejection Fallback + ₹1,000 Extra Trip):',
+                          'डाउनसाइड परिदृश्य (FCI अस्वीकृति पर सीधी बिक्री + ₹1,000 अतिरिक्त फेरा):'
+                        )}{' '}
+                        <span className="text-base font-black">
+                          {formatINR(displayedDownside)}
+                        </span>
+                      </p>
+                      <SpeakButton
+                        text={
+                          language === 'hi'
+                            ? `डाउनसाइड परिदृश्य: एफसीआई अस्वीकृति होने पर सीधी बिक्री और एक हजार रुपये अतिरिक्त फेरा खर्च के बाद शुद्ध आय एक लाख बारह हजार पाँच सौ रुपये होगी।`
+                            : `Downside scenario: FCI rejection fallback to direct buyer with one thousand rupees extra transport leg yields net return of one lakh twelve thousand five hundred rupees.`
+                        }
+                        lang={language}
+                      />
+                    </div>
                     <p className="mt-1 text-xs font-normal">
                       {t(
                         'If goods are rejected at FCI due to moisture or queue delays and re-routed to a direct buyer with an additional logistics leg.',
@@ -782,6 +842,14 @@ export const CropToCashPage: React.FC = () => {
                   </p>
                 </div>
 
+                {/* SPO Smart Procurement Orchestration (spo-snowy.vercel.app) Integration Card */}
+                <SpoProcurementBridge
+                  currentLot={currentLot}
+                  quantity={quantity}
+                  expectedNet={displayedEstimates[0]?.net}
+                  readinessSummary={`${snapshot.readiness.filter((r) => r.ready).length} of ${snapshot.readiness.length} checks verified`}
+                />
+
                 {/* Privacy & Zero-PII Guarantee Banner */}
                 <div className="rounded-lg border-2 border-[#006B3C]/40 bg-[#E8F5E9] p-3 text-xs text-[#064E22]">
                   <p className="font-extrabold">
@@ -800,13 +868,18 @@ export const CropToCashPage: React.FC = () => {
 
                 {/* Procurement Centre Details Card */}
                 <div className="rounded-xl border-2 border-[#000080]/20 bg-[#F7F8FC] p-4 text-sm">
-                  <h3 className="font-black text-[#000080]">
-                    {t('Designated Procurement Centre Details', 'नामित खरीद केंद्र विवरण')}
-                  </h3>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-black text-[#000080]">
+                      {t('Designated Procurement Centre Details (Delhi Pilot)', 'नामित खरीद केंद्र विवरण (दिल्ली पायलट)')}
+                    </h3>
+                    <span className="rounded bg-[#138808] px-2 py-0.5 text-xs font-black text-white">
+                      NARELA & NAJAFGARH PILOT
+                    </span>
+                  </div>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2 text-xs font-semibold">
                     <div>
                       <span className="text-gray-500">{t('Centre Name: ', 'केंद्र नाम: ')}</span>
-                      Khandwa FCI Depot / APMC Mandi Yard #3
+                      Narela FCI Food Depot / APMC Najafgarh Yard #2
                     </div>
                     <div>
                       <span className="text-gray-500">{t('Operating Hours: ', 'संचालन समय: ')}</span>
@@ -814,20 +887,44 @@ export const CropToCashPage: React.FC = () => {
                     </div>
                     <div>
                       <span className="text-gray-500">{t('Address: ', 'पता: ')}</span>
-                      Warehouse Complex, Sector 4, Khandwa, MP 450001
+                      FCI Depot, Narela Industrial Complex / Najafgarh Mandi, Delhi 110040
                     </div>
                     <div>
                       <span className="text-gray-500">{t('Scheduled Appointment Slot: ', 'निर्धारित समय: ')}</span>
-                      October 22, 2026 · Morning 09:30 AM
+                      October 22, 2026 · Morning 09:30 AM (Slot #DL-SPO-2026)
                     </div>
                   </div>
                 </div>
 
                 {/* Readiness Checklist */}
                 <fieldset className="space-y-3">
-                  <legend className="font-extrabold text-[#000080]">
-                    {t('Readiness checklist (yes / no flags only)', 'तैयारी सूची (केवल हाँ / नहीं स्थिति)')}
-                  </legend>
+                  <div className="flex items-center justify-between gap-2">
+                    <legend className="font-extrabold text-[#000080]">
+                      {t('Readiness checklist (yes / no flags only)', 'तैयारी सूची (केवल हाँ / नहीं स्थिति)')}
+                    </legend>
+                    <SpeakButton
+                      text={
+                        language === 'hi'
+                          ? `खरीद तैयारी सूची: ${snapshot.readiness
+                              .map(
+                                (r) =>
+                                  `${r.labelHi} ${
+                                    r.ready ? 'तैयार है' : 'बाकी है'
+                                  }`
+                              )
+                              .join('। ')}`
+                          : `Procurement readiness checklist: ${snapshot.readiness
+                              .map(
+                                (r) =>
+                                  `${r.labelEn} is ${
+                                    r.ready ? 'ready' : 'pending'
+                                  }`
+                              )
+                              .join('. ')}`
+                      }
+                      lang={language}
+                    />
+                  </div>
                   {snapshot.readiness.map((item) => (
                     <label
                       key={item.id}
