@@ -192,3 +192,89 @@ test('API adapter reports server errors and their retryability', async () => {
       error.message === 'Try the request again.'
   );
 });
+
+test('demo adapter screens image, abstains on invalid format or large payload, and referrals safely', async () => {
+  const adapter = createCropToCashMockAdapter(
+    () => new Date('2026-10-18T12:30:00.000Z')
+  );
+  const lotId = 'KS-SCREEN-TEST';
+
+  // Valid image
+  const result = await adapter.screenImage(lotId, {
+    imageFormat: 'jpeg',
+    imageSizeBytes: 300 * 1024,
+    cropDeclared: 'Soybean',
+  });
+  assert.equal(result.lotId, lotId);
+  assert.equal(result.isMockOrDemo, true);
+  assert.equal(result.calibratedConfidence, false);
+  assert.equal(result.outcomeCategory, 'DISEASE_DETECTED');
+  assert.ok(result.explanation.safeExpertReferral.includes('KVK'));
+  assert.ok(!result.explanation.safeExpertReferral.toLowerCase().includes('spray'));
+
+  // Oversized image > 10MB
+  const rejectedSize = await adapter.screenImage(lotId, {
+    imageFormat: 'jpeg',
+    imageSizeBytes: 12 * 1024 * 1024,
+  });
+  assert.equal(rejectedSize.outcomeCategory, 'IMAGE_QUALITY_REJECTED');
+  assert.equal(rejectedSize.topClass, null);
+
+  // Unsupported format
+  const rejectedFormat = await adapter.screenImage(lotId, {
+    imageFormat: 'bmp',
+    imageSizeBytes: 500 * 1024,
+  });
+  assert.equal(rejectedFormat.outcomeCategory, 'IMAGE_QUALITY_REJECTED');
+  assert.equal(rejectedFormat.topClass, null);
+});
+
+test('API adapter posts screenImage request and parses response', async () => {
+  const lotId = 'KS-API-SCREEN';
+  let observedUrl = '';
+  let observedMethod = '';
+  const mockScreenResult = {
+    screeningId: 'SCR-12345',
+    lotId,
+    modelName: 'KisanSetu-Screening-Adapter',
+    modelVersion: 'v1.0.0-mock-demo',
+    isMockOrDemo: true,
+    timestamp: '2026-10-18T12:30:00.000Z',
+    outcomeCategory: 'DISEASE_DETECTED',
+    topClass: {
+      className: 'Soybean Rust',
+      confidence: 0.88,
+    },
+    runnerUp: null,
+    calibratedConfidence: false,
+    explanation: {
+      visualQualityScore: 0.85,
+      lightingAdequate: true,
+      blurDetected: false,
+      diagnosticNotes: 'Foliar pustules detected.',
+      safeExpertReferral: 'Consult nearest Krishi Vigyan Kendra (KVK).',
+    },
+  };
+
+  const adapter = createCropToCashApiAdapter(
+    () => 'test-token',
+    async (input, init) => {
+      observedUrl = String(input);
+      observedMethod = init?.method || 'GET';
+      return Response.json(mockScreenResult);
+    }
+  );
+
+  const result = await adapter.screenImage(lotId, {
+    imageFormat: 'jpeg',
+    imageSizeBytes: 400 * 1024,
+    cropDeclared: 'Soybean',
+  });
+
+  assert.equal(observedUrl, '/api/v1/lots/KS-API-SCREEN/screenings');
+  assert.equal(observedMethod, 'POST');
+  assert.equal(result.screeningId, 'SCR-12345');
+  assert.equal(result.isMockOrDemo, true);
+  assert.equal(result.calibratedConfidence, false);
+});
+

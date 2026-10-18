@@ -136,9 +136,19 @@ export const AuthPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-white text-black flex flex-col justify-between">
+    <div className="relative min-h-screen w-full bg-white text-black flex flex-col justify-between overflow-x-hidden">
+      {/* Background AI Agricultural Panorama */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden="true">
+        <img
+          src="/agri_hero_bg.jpg"
+          alt=""
+          className="w-full h-full object-cover object-center opacity-15 filter blur-[0.2px]"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/95 via-white/85 to-white/95" />
+      </div>
+
       {/* Top Minimal Utility Strip */}
-      <header className="w-full border-b border-[#000080]/15 bg-white px-4 sm:px-8 py-3">
+      <header className="relative z-10 w-full border-b border-[#000080]/15 bg-white/90 backdrop-blur-md px-4 sm:px-8 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5 anim-brand-entrance">
             {!logoError ? (

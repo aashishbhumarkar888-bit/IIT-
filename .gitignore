@@ -6,3 +6,13 @@ coverage/
 *.log
 .env*
 !.env.example
+firebase-applet-config.json
+firebase-applet-config*.json
+!firebase-applet-config.example.json
+serviceAccountKey*.json
+*credentials*.json
+*.pem
+*.key
+.vscode/
+.idea/
+Thumbs.db

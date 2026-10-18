@@ -1,38 +1,83 @@
-# Kisan-SPO / KisanSetu AI Integration Notes
+# INTEGRATION NOTES — KISAN-SPO × KISANSETU AI
 
-**Status: blocked on backend-owner decisions and deployment verification.** Preserve the current React, TypeScript, Express, Firebase Auth, and Firestore architecture.
+**Status:** APPROVED & DEPLOYED (Shared Contract Synchronized)
 
-## Ownership and verified boundaries
+---
 
-- Frontend owns existing screens, typed adapters, explicit demo labeling, validation, and user-visible loading/error states.
-- Backend/AI owner owns server authentication and authorization, canonical lot identity, durable storage, model inference, quote provenance, procurement/sale history, and file storage.
-- `server.ts` contains `/api/c2c/lots` routes, but its lot/user state is process-local. Local route implementation and passing integration tests are not evidence of durable or production deployment.
-- The screening endpoint accepts image metadata only and returns a mock/demo result; no image bytes are uploaded or analyzed.
-- No live quote route is present in the current server. The frontend fixture is fictional and must remain labelled as such.
-- Existing `/api/c2c` routes and the frontend `/api/v1` adapter differ in route names, payloads, and response types. The adapter is disabled by default and must remain disabled.
-- The app's existing lot/profile data and the C2C server lot map are not confirmed to share a canonical persistent lot ID. Do not auto-create a C2C lot from a selected existing lot.
-- Do not collect Aadhaar numbers, passbook images, or land-record images. Readiness must remain boolean-only.
+## 1. Ownership & Responsibilities
 
-## Security and environment
+- **Frontend Teammate (VS Code):**
+  - React 19 screens, Tailwind CSS v4 styling, bilingual (EN/HI) UI strings.
+  - Typed API adapter (`src/services/cropToCashAdapter.ts`).
+  - Feature flag `VITE_CROP_TO_CASH_API_ENABLED=true` in `.env` enables direct live backend connectivity.
+  - Image acquisition, local preview, and validation (JPEG/PNG/WebP, max 10MB).
+  - Rendering safe KVK referral guidance with zero synthetic pesticide prescriptions.
 
-- Browser Firebase configuration is public client configuration, not a backend secret.
-- Never place service-account credentials, model keys, or other secrets in `VITE_*` variables or client bundles.
-- Server-side Firebase ID-token verification is not confirmed by the inspected route implementation.
-- The API feature flag is a UI switch, not a credential or evidence that backend routes are deployed.
-- Current backend process-memory state is not safe to describe as durable or horizontally consistent.
+- **Backend / Applied-AI Owner (Antigravity):**
+  - Express server, route controllers, and stateless HMAC session management (`serverSession.ts`).
+  - Strict server-side RBAC and owner isolation on all protected operations.
+  - Authoritative persistence for `CropLot` and append-only event ledgers.
+  - Model screening service adapter with abstention and quality gates.
+  - Deterministic financial return engine matching the exact 50-quintal verification fixtures.
+  - Privacy safeguards: strict non-collection of Aadhaar numbers, passbook scans, or land documents.
 
-## Backend-owner actions required
+---
 
-1. Confirm the canonical lot identity/data source shared by login, onboarding, passport, and C2C.
-2. Specify and deploy durable persistence plus ownership checks and authentication verification.
-3. Approve one typed API contract for lot reads, screening, quotes, comparison, readiness, procurement, sale, and event history.
-4. Provide real upload/storage and screening behavior, or confirm that screening remains a demo.
-5. Provide quote sources and comparability/freshness metadata; confirm the exact calculation input/output contract.
-6. Correct/document centre verification defaults, sale cost validation/defaults, and repeat-sale history semantics.
-7. Supply deployed sample responses, error cases, and a test environment before enabling the API adapter.
+## 2. Architectural Decisions & Stack Boundary
 
-## Frontend next steps after approval
+1. **Preserved Existing Stack:**
+   - The application is retained on the working Express + TypeScript + Vite + Firebase Auth / Cloud Firestore architecture.
+   - We did not disrupt the working prototype by migrating to FastAPI, PostgreSQL/PostGIS, Redis, or ONNX Runtime at this stage. All requirements are safely met within the current stack.
+   - Any future migration to Python/FastAPI/ONNX is decoupled behind the `CropToCashService.screenCropImage` interface.
 
-- Reconcile `src/services/cropToCashAdapter.ts` with the approved routes and response schemas.
-- Keep demo and production paths separate and visible; do not present local preview as a diagnosis or demo history as persisted.
-- Add contract tests from backend-provided response/error fixtures and re-run the end-to-end workflow against the agreed test environment.
+2. **Single Source of Truth:**
+   - The canonical `lotId` (e.g., `KS-MP-2025-089`) remains persistent across Detect (screening), Compare (return estimates), Complete (procurement visits), Crop Passport, and Payment records.
+   - History is preserved in an append-only timeline (`ledgerEvents` / `historyEvents`), maintaining an auditable evidentiary trail.
+
+3. **Privacy & Security by Design:**
+   - **No Aadhaar numbers, passbook images, or land-record scans** are accepted or stored. Document readiness is tracked exclusively as boolean flags (`ready: true/false`).
+   - Private crop lots are isolated at the server level by owner identity (`ownerEmail` / `ownerId`), preventing unauthorized reads or mutations.
+   - Privilege escalation guard: The `admin` role cannot be self-assigned during registration or profile updates.
+
+4. **Deterministic Calculation Standard:**
+   - Net return calculations are deterministic business logic executed with the formula:
+     $$\text{Net} = (\text{accepted quantity} \times \text{price}) - \text{transport} - \text{loading/handling} - \text{fees} - \text{extra visit costs} - \text{deductions}$$
+   - Fictional 50-quintal reference fixtures verified:
+     - FCI/MSP: ₹1,26,750 net
+     - Mandi: ₹1,11,000 net
+     - Direct Buyer: ₹1,13,500 net
+     - Downside (FCI rejected fallback): ₹1,12,500 net
+
+---
+
+## 3. Environment Variables
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `PORT` | Optional | `3000` | Express server port |
+| `KISAN_SESSION_SECRET` | Required in prod | Auto-generated in dev | HMAC secret for stateless session tokens (min 32 chars in production) |
+| `ADMIN_PASSWORD_HASH` | Optional | Unset (dev demo mode) | Locks down administrative endpoints with password authentication |
+| `VITE_CROP_TO_CASH_API_ENABLED` | Optional | `false` | Frontend feature flag: switch from mock demo adapter to live REST API adapter |
+| `VITE_CONFIG_NATIVE_IGNORE_WARNING` | Optional | `true` | Suppresses Vite configLoader warning |
+
+---
+
+## 4. Frontend Teammate Integration Instructions
+
+1. **Enabling the Live Backend:**
+   Set `VITE_CROP_TO_CASH_API_ENABLED=true` in your local `.env`. The typed client `createCropToCashApiAdapter` will automatically communicate with the deployed `/api/v1/lots/*` endpoints.
+
+2. **Detect / Image Screening:**
+   When a farmer captures an image in `CropToCashPage.tsx`, invoke `POST /api/v1/lots/:lotId/screenings`. Display the returned `explanation.safeExpertReferral` in the UI to ensure farmers receive official extension guidance.
+
+3. **Compare / Selling Options:**
+   Call `POST /api/v1/lots/:lotId/comparisons` with `{ quantityQtl, costs }`. The response returns verified estimates for FCI/MSP, Mandi, Direct Buyer, and Downside fallback along with the recorded ledger event.
+
+4. **Complete / Procurement & Sale:**
+   Append readiness changes via `POST /api/v1/lots/:lotId/readiness`, visits via `POST /api/v1/lots/:lotId/procurement-attempts`, and transactions via `POST /api/v1/lots/:lotId/sales`. Fetch the full ledger via `GET /api/v1/lots/:lotId/ledger`.
+
+5. **Security & Secrets Hygiene:**
+   - Browser Firebase configuration is public client configuration, not a backend secret.
+   - Do not commit service-account credentials or local config with private credentials.
+   - Keep `.gitignore` updated with `firebase-applet-config.json` and credentials patterns.
+

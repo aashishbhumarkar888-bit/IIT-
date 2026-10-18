@@ -1,7 +1,9 @@
+import { Request, Response } from 'express';
 import {
   CropLedgerEvent,
   CropReadinessItem,
   ProcurementState,
+  SellingQuote,
 } from '../types/cropToCash';
 
 // ============================================================================
@@ -211,6 +213,14 @@ export interface ExtendedCropLotRecord {
   readiness: CropReadinessItem[];
   procurementState: ProcurementState;
   ledgerEvents: CropLedgerEvent[];
+  readiness?: {
+    registration?: boolean;
+    bankAccount?: boolean;
+    landRecord?: boolean;
+    qualityCheck?: boolean;
+  };
+  procurementState?: ProcurementState;
+  ledgerEvents?: CropLedgerEvent[];
   createdAt: string;
   updatedAt: string;
 }
@@ -558,6 +568,58 @@ persistExtendedLotsToDisk();
 export function getExtendedLot(
   lotId: string
 ): ExtendedCropLotRecord | undefined {
+const defaultDemoLot: ExtendedCropLotRecord = {
+  id: 'KS-MP-2025-089',
+  ownerEmail: 'ramesh.patel@kisan-spo.in',
+  ownerId: 'USR-DEMO-FARMER',
+  farmerName: 'Ramesh Patel',
+  cropName: 'Soybean (JS-335)',
+  variety: 'Grade A Certified',
+  grade: 'Grade A',
+  quantityQuintals: 50,
+  harvestDate: 'Oct 2026',
+  surveyNumber: 'Plot-99/A',
+  plotAreaHectares: 4.0,
+  screeningResults: [],
+  procurementAttempts: [],
+  historyEvents: [
+    {
+      eventId: 'EV-KS-MP-2025-089-INIT',
+      timestamp: '2026-10-18T00:00:00.000Z',
+      actor: 'ramesh.patel@kisan-spo.in',
+      actorRole: 'farmer',
+      eventType: 'LOT_CREATED',
+      summary: 'Crop Lot KS-MP-2025-089 initialized with 50 quintals of Soybean.',
+      isVerified: true,
+      details: { cropName: 'Soybean (JS-335)', quantityQuintals: 50 },
+    },
+  ],
+  readiness: {
+    registration: true,
+    bankAccount: true,
+    landRecord: true,
+    qualityCheck: false,
+  },
+  procurementState: 'PLANNED',
+  ledgerEvents: [
+    {
+      eventId: 'EV-KS-MP-2025-089-INIT',
+      lotId: 'KS-MP-2025-089',
+      type: 'READINESS',
+      occurredAt: '2026-10-18T00:00:00.000Z',
+      source: 'VERIFIED',
+      verification: 'OFFICIAL_REGISTRATION',
+      summary: 'Farmer registration and bank account verified for MSP eligibility.',
+      payload: { readinessId: 'registration', ready: true },
+    },
+  ],
+  createdAt: '2026-10-18T00:00:00.000Z',
+  updatedAt: '2026-10-18T00:00:00.000Z',
+};
+
+extendedCropLots.set(defaultDemoLot.id, defaultDemoLot);
+
+export function getExtendedLot(lotId: string): ExtendedCropLotRecord | undefined {
   return extendedCropLots.get(lotId);
 }
 

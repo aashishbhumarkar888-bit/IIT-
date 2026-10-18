@@ -7,6 +7,8 @@ import {
   NewCropLedgerEvent,
   ProcurementState,
   SellingQuote,
+  CropScreeningResult,
+  ScreeningRequestPayload,
 } from '../types/cropToCash';
 import {
   calculateSellingOptions,
@@ -22,6 +24,10 @@ export interface CropToCashAdapter {
     costs: SellingCosts
   ): Promise<ComparisonResult>;
   appendEvent(event: NewCropLedgerEvent): Promise<CropLedgerEvent>;
+  screenImage(
+    lotId: string,
+    payload: ScreeningRequestPayload
+  ): Promise<CropScreeningResult>;
 }
 
 export class CropToCashApiError extends Error {
@@ -48,6 +54,7 @@ const PROCUREMENT_VALUES = [
   'VISITED',
   'ACCEPTED',
   'PENDING',
+  'ACCEPTED',
   'REJECTED',
   'RESCHEDULED',
   'NOT_COMPLETED',
@@ -164,6 +171,21 @@ function isComparisonResult(value: unknown): value is ComparisonResult {
   );
 }
 
+function isCropScreeningResult(value: unknown): value is CropScreeningResult {
+  return (
+    isRecord(value) &&
+    typeof value.screeningId === 'string' &&
+    typeof value.modelName === 'string' &&
+    typeof value.modelVersion === 'string' &&
+    typeof value.isMockOrDemo === 'boolean' &&
+    typeof value.outcomeCategory === 'string' &&
+    typeof value.calibratedConfidence === 'boolean' &&
+    isRecord(value.explanation) &&
+    typeof (value.explanation as Record<string, unknown>).safeExpertReferral ===
+      'string'
+  );
+}
+
 function apiPath(lotId: string, resource: string): string {
   return `/api/v1/lots/${encodeURIComponent(lotId)}/${resource}`;
 }
@@ -259,6 +281,15 @@ export function createCropToCashApiAdapter(
           body: JSON.stringify(event),
         });
     },
+    screenImage: (lotId, payload) =>
+      request<CropScreeningResult>(
+        apiPath(lotId, 'screenings'),
+        isCropScreeningResult,
+        {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        }
+      ),
   };
 }
 
@@ -306,21 +337,27 @@ const sampleQuotes: SellingQuote[] = [
 
 const defaultReadiness = [
   {
-    id: 'bank-details',
-    labelEn: 'Bank details ready (readiness only)',
-    labelHi: 'बैंक विवरण तैयार (केवल तैयारी)',
-    ready: false,
-  },
-  {
     id: 'registration',
-    labelEn: 'Farmer registration details ready',
-    labelHi: 'किसान पंजीकरण विवरण तैयार',
+    labelEn: 'Farmer & Land Registration',
+    labelHi: 'किसान एवं भूमि पंजीकरण',
     ready: false,
   },
   {
-    id: 'produce',
-    labelEn: 'Produce quantity and grade noted',
-    labelHi: 'फसल की मात्रा और ग्रेड दर्ज',
+    id: 'bankAccount',
+    labelEn: 'Aadhaar-Linked Bank Account (Readiness flag only)',
+    labelHi: 'आधार लिंक बैंक खाता (केवल तैयारी स्थिति)',
+    ready: false,
+  },
+  {
+    id: 'landRecord',
+    labelEn: 'Khasra / Land Record Verification',
+    labelHi: 'खसरा / भूमि रिकॉर्ड सत्यापन',
+    ready: false,
+  },
+  {
+    id: 'qualityCheck',
+    labelEn: 'Pre-Procurement Quality / Moisture Check',
+    labelHi: 'खरीद-पूर्व गुणवत्ता / नमी जांच',
     ready: false,
   },
 ];
@@ -429,6 +466,86 @@ export function createCropToCashMockAdapter(
       };
     },
     appendEvent: appendLedgerEvent,
+    async screenImage(lotId, payload) {
+      if (payload.imageSizeBytes > 10 * 1024 * 1024) {
+        return {
+          screeningId: `demo-scr-${now().getTime()}`,
+          lotId,
+          modelName: 'KisanSetu-Screening-Adapter',
+          modelVersion: 'v1.0.0-mock',
+          isMockOrDemo: true,
+          timestamp: now().toISOString(),
+          outcomeCategory: 'IMAGE_QUALITY_REJECTED',
+          topClass: null,
+          runnerUp: null,
+          calibratedConfidence: false,
+          abstentionReason: 'Image payload exceeds 10MB limit.',
+          explanation: {
+            visualQualityScore: 0.1,
+            lightingAdequate: false,
+            blurDetected: true,
+            diagnosticNotes: 'File size exceeds maximum supported boundary.',
+            safeExpertReferral:
+              'Please re-capture with lower resolution or consult local Krishi Vigyan Kendra (KVK).',
+          },
+        };
+      }
+
+      if (!['jpeg', 'png', 'webp'].includes(payload.imageFormat)) {
+        return {
+          screeningId: `demo-scr-${now().getTime()}`,
+          lotId,
+          modelName: 'KisanSetu-Screening-Adapter',
+          modelVersion: 'v1.0.0-mock',
+          isMockOrDemo: true,
+          timestamp: now().toISOString(),
+          outcomeCategory: 'IMAGE_QUALITY_REJECTED',
+          topClass: null,
+          runnerUp: null,
+          calibratedConfidence: false,
+          abstentionReason: `Unsupported image format: ${payload.imageFormat}`,
+          explanation: {
+            visualQualityScore: 0.2,
+            lightingAdequate: false,
+            blurDetected: false,
+            diagnosticNotes: 'Only JPEG, PNG, or WebP images are supported.',
+            safeExpertReferral: 'Upload a valid image format.',
+          },
+        };
+      }
+
+      return {
+        screeningId: `demo-scr-${now().getTime()}`,
+        lotId,
+        modelName: 'KisanSetu-Screening-Adapter',
+        modelVersion: 'v1.0.0-mock-demo',
+        isMockOrDemo: true,
+        timestamp: now().toISOString(),
+        outcomeCategory: 'DISEASE_DETECTED',
+        topClass: {
+          className: 'Soybean Rust (Phakopsora pachyrhizi)',
+          classNameHi: 'सोयाबीन रतुआ (फकोस्पोरा पचीरिजी)',
+          confidence: 0.88,
+          scientificName: 'Phakopsora pachyrhizi',
+        },
+        runnerUp: {
+          className: 'Cercospora Leaf Blight',
+          classNameHi: 'सर्कोस्पोरा लीफ ब्लाइट',
+          confidence: 0.08,
+          scientificName: 'Cercospora kikuchii',
+        },
+        calibratedConfidence: false,
+        explanation: {
+          visualQualityScore: 0.85,
+          lightingAdequate: true,
+          blurDetected: false,
+          diagnosticNotes:
+            'Visual inspection indicates typical reddish-brown foliar pustules. Pre-Harvest Interval (PHI) compliance mandatory before any harvest scheduling.',
+          safeExpertReferral:
+            'Automated systems do not prescribe synthetic pesticides from imagery alone. Please consult your Block Agriculture Extension Officer or visit the nearest Krishi Vigyan Kendra (KVK) for an official field agronomy prescription.',
+        },
+      };
+    },
   };
 }
 

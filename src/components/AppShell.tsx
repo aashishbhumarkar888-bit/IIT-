@@ -3,6 +3,7 @@ import { AppRoute, useKisan } from '../context/KisanContext';
 import { KISAN_LOGO_URL } from '../data/kisanData';
 import { useAuth } from '../hooks/useAuth';
 import { UserRole } from '../types/kisan';
+import { TalkBackBar } from './TalkBackBar';
 
 interface NavItem {
   route: AppRoute;
@@ -309,7 +310,17 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
   }
 
   return (
-    <div className="min-h-screen w-full bg-white text-black flex flex-col lg:flex-row">
+    <div className="relative min-h-screen w-full bg-white text-black flex flex-col lg:flex-row">
+      {/* Background AI Agricultural Panorama with soft glassmorphic backdrop */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden="true">
+        <img
+          src="/agri_hero_bg.jpg"
+          alt=""
+          className="w-full h-full object-cover object-center opacity-15 filter blur-[0.3px]"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-white/95 via-white/85 to-white/95" />
+      </div>
+
       {/* DESKTOP / TABLET PERSISTENT & COLLAPSIBLE SIDEBAR */}
       <aside
         aria-label="Primary Sidebar Navigation"
@@ -467,6 +478,40 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
                 )}
               </button>
             )}
+            {/* Live SPO Snowy Procurement Companion Link */}
+            <a
+              href="https://spo-snowy.vercel.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 flex items-center justify-between px-3 py-2.5 rounded text-left transition-colors min-h-[44px] font-bold border bg-[#E8F5E9] text-[#006B3C] hover:bg-[#138808] hover:text-white border-[#138808]/40 shadow-xs group"
+              title="SPO Smart Procurement Orchestration (spo-snowy.vercel.app)"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="material-symbols-outlined text-[20px] shrink-0 text-[#138808] group-hover:text-white">
+                  local_shipping
+                </span>
+                {sidebarOpen && (
+                  <div className="flex flex-col min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-extrabold truncate">
+                        SPO Procurement
+                      </span>
+                      <span className="text-[9px] px-1 py-0.2 bg-[#138808] group-hover:bg-white text-white group-hover:text-[#138808] rounded font-black">
+                        LIVE
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-semibold truncate opacity-85">
+                      spo-snowy.vercel.app
+                    </span>
+                  </div>
+                )}
+              </div>
+              {sidebarOpen && (
+                <span className="material-symbols-outlined text-[16px] shrink-0 opacity-70 group-hover:opacity-100">
+                  open_in_new
+                </span>
+              )}
+            </a>
           </nav>
 
           {/* Role-Specific Context Menu in Sidebar */}
@@ -1039,6 +1084,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({
           </div>
         </div>
       )}
+
+      {/* Persistent TalkBack Audio Accessibility Controller */}
+      <TalkBackBar />
     </div>
   );
 };
