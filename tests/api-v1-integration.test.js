@@ -87,6 +87,21 @@ test('API v1 Integration: 12-Step Live HTTP End-to-End Verification via createCr
   );
 
   // Step 4: Fetch quotes via adapter (GET /api/v1/lots/:lotId/quotes)
+  const quotesRes = await fetch(
+    `${BASE_URL}/api/v1/lots/${lotId}/quotes`,
+    { headers: authHeadersA }
+  );
+  assert.equal(quotesRes.status, 200);
+  assert.equal(
+    quotesRes.headers.get('cache-control'),
+    'private, max-age=30, must-revalidate',
+    'Quotes may be cached privately for at most 30 seconds'
+  );
+  assert.equal(
+    quotesRes.headers.get('vary'),
+    'Authorization',
+    'Quotes must be partitioned by authenticated identity'
+  );
   const quotes = await adapterA.getQuotes(lotId);
   assert.equal(quotes.length, 3, 'Must return 3 selling quotes');
   assert.ok(quotes.every((q) => q.lotId === lotId));
@@ -201,6 +216,11 @@ test('API v1 Integration: 12-Step Live HTTP End-to-End Verification via createCr
     adapterB.getSnapshot(lotId),
     (err) => err instanceof CropToCashApiError && err.status === 403,
     'Farmer B must receive 403 Forbidden when accessing Farmer A lot'
+  );
+  await assert.rejects(
+    adapterB.getQuotes(lotId),
+    (err) => err instanceof CropToCashApiError && err.status === 403,
+    'Farmer B must not receive Farmer A quotes from a private cache'
   );
 
   // Step 12: Verify POST /api/v1/lots/:lotId/screenings rejects >10MB and returns safe KVK advice on valid payload

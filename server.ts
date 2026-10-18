@@ -1917,6 +1917,8 @@ async function startServer() {
     (req: Request, res: Response) => {
       const lot = getOwnedLotOrError(req, res);
       if (!lot) return;
+      res.setHeader('Cache-Control', 'private, max-age=30, must-revalidate');
+      res.setHeader('Vary', 'Authorization');
       res.json(buildQuotesForLot(lot));
     }
   );

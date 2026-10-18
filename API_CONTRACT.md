@@ -59,6 +59,8 @@
 
 ---
 
+The authenticated `GET /api/v1/lots/:lotId/quotes` response uses `Cache-Control: private, max-age=30, must-revalidate` and `Vary: Authorization`. This permits only per-browser caching for 30 seconds; ownership is checked before responding, and different authorization tokens use separate cache entries.
+
 ## 3. Legacy `/api/c2c` Compatibility Endpoints
 
 The following routes are preserved in `server.ts` for backward compatibility with prototype test suites:
